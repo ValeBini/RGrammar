@@ -57,20 +57,22 @@ equal xs ys = let xs' = map (\x -> fromList (runState x)) xs
               in (fromList xs') == (fromList ys')
 
 
-dfaF :: [Sym] -> R (Maybe String) -> [State (Maybe String)] -> F [Maybe String] -> F [Maybe String] -> F [Maybe String]
-dfaF xs (R rs) sts (F fall) (F flast) = let f = concat (map (\(s1, x1, s1') -> map (\x -> (s1', x, t s1' x)) xs) flast)
-                                        in if included (F f) (F fall) then (F fall) else (dfaF xs (R rs) sts (F (union fall f)) (F f))
+dfaF' :: [Sym] -> R (Maybe String) -> [State (Maybe String)] -> F [Maybe String] -> F [Maybe String] -> F [Maybe String]
+dfaF' xs (R rs) sts (F fall) (F flast) = let f = concat (map (\(s1, x1, s1') -> map (\x -> (s1', x, t s1' x)) xs) flast)
+                                         in if included (F f) (F fall) then (F fall) else (dfaF' xs (R rs) sts (F (union fall f)) (F f))
+         where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
+
+dfaF :: [Sym] -> R (Maybe String) -> [State (Maybe String)] -> State [Maybe String] -> F [Maybe String]
+dfaF xs (R rs) sts i = let f = map (\x -> (i, x, t i x)) xs
+                       in dfaF' xs (R rs) sts (F f) (F f)
         where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
 
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
-nfaToDFA (NA xs st rs ac i) = DA xs st' f ac' i'
+nfaToDFA (NA xs st (R rs) ac i) = DA xs st' (F f) ac' i'
     where i' = State (union [runState i] [runState s | s<-st, elem (i, Sym Nothing, s) rs])
-          f = dfaF xs rs st (F [])
-          st' = dfaStates xs rs [i']
-          dfaStates sx sr sst = let sst' = union sst (concat (map (\s -> map (\x -> t s x) sx) sst))
-                                 in if (equal sst sst') then sst else dfaStates sx sr sst'
-          t sts x = concat (map (\s -> State [s' | s'<-st', elem (State s, x, State s') rs]) (runState sts))
-          ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (runState ac))) /= empty]
+          (F f) = dfaF xs (R rs) st i'
+          st' = union (map (\(a,b,c)->a) f) (map (\(a,b,c)->c) f)
+          ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (map runState ac))) /= empty]
 
 {-}
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
