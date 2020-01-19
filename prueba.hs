@@ -1,5 +1,5 @@
 import Data.Set (fromList, isSubsetOf, intersection, empty)
-import Data.List (union)
+import Data.List (union ,(\\))
 
 newtype T = T {runT :: String}
     deriving (Eq, Ord, Show)
@@ -73,6 +73,23 @@ nfaToDFA (NA xs st (R rs) ac i) = DA xs st' (F f) ac' i'
           (F f) = dfaF xs (R rs) st i'
           st' = union (map (\(a,b,c)->a) f) (map (\(a,b,c)->c) f)
           ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (map runState ac))) /= empty]
+
+
+nextPartition :: [[State [Maybe String]]] -> [Sym] -> F [Maybe String] -> [[State [Maybe String]]]
+nextPartition p xs (F f) = concat (map dis p)
+    where dis ss = 
+
+minimumStates :: [Sym] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [Maybe String]]
+minimumStates xs p (F f) = let nextp = nextPartition p xs (F f)
+                            in if p == nextp then (map (\ss -> State (concat (map runState ss))))
+                                             else minimumStates xs nextp (F f)
+
+minimizeDFA :: DFA [Maybe String] -> DFA [Maybe String]
+minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f) ac' i'
+    where st' = minimumStates xs [ac, st \\ ac] (F f)
+          f = [(s0, x, s1) | s0<-st', s1<-st', ]
+
+
 
 {-}
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
