@@ -75,19 +75,39 @@ nfaToDFA (NA xs st (R rs) ac i) = DA xs st' (F f) ac' i'
           ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (map runState ac))) /= empty]
 
 
-nextPartition :: [[State [Maybe String]]] -> [Sym] -> F [Maybe String] -> [[State [Maybe String]]]
-nextPartition p xs (F f) = concat (map dis p)
-    where dis ss = 
+nextPartition :: [State [Maybe String]] -> [[State [Maybe String]]] -> [Sym] -> F [Maybe String] -> [[State [Maybe String]]]
+nextPartition sts last xs (F f) = concat (map (partition []) last)
+    where partition new [] = new
+          partition [] (s:ss) = partition [[s]] ss
+          partition (p:ps) (s:ss) = if distinguishable (head p) s then partition (p:(partition ps [s])) ss
+                                                                  else partition ((s:p):ps) ss
+          distinguishable s1 s2 = or (map (\x -> (numOfPart [s | s<-sts, elem (s1,x,s) f] last 0) /= (numOfPart [s | s<-sts, elem (s2,x,s) f] last 0)) xs)
+          numOfPart [s] [] i = -1
+          numOfPart [s] (p:ps) i = if (elem s p) then i 
+                                                 else numOfPart [s] ps (i+1)
 
-minimumStates :: [Sym] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [Maybe String]]
-minimumStates xs p (F f) = let nextp = nextPartition p xs (F f)
-                            in if p == nextp then (map (\ss -> State (concat (map runState ss))))
-                                             else minimumStates xs nextp (F f)
+minimumStates :: [Sym] -> [State [Maybe String]] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [[Maybe String]]]
+minimumStates xs sts p (F f) = let nextp = nextPartition sts p xs (F f)
+                            in if p == nextp then (map (\ss -> State ((map runState ss))) p)
+                                             else minimumStates xs sts nextp (F f)
 
-minimizeDFA :: DFA [Maybe String] -> DFA [Maybe String]
-minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f) ac' i'
-    where st' = minimumStates xs [ac, st \\ ac] (F f)
-          f = [(s0, x, s1) | s0<-st', s1<-st', ]
+
+minimizeDFA :: DFA [Maybe String] -> DFA [[Maybe String]]
+minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
+    where st' = minimumStates xs st [ac, st \\ ac] (F f)
+          f' = [(s0, x, s1) | s0<-st', x<-xs, s1<-st', connect s0 x s1]
+          connect s0 x s1 = or (concat (map (\ss0-> (map (\ss1-> elem (State ss0, x, State ss1) f) (runState s1))) (runState s0)))
+          ac' = [s | s<-st', [ss | ss<-ac, elem (runState ss) (runState s)] /= []]
+          i' = let [s] = [s | s<-st', elem (runState i) (runState s)] in s
+
+
+rename :: [Sym] -> F [[Maybe String]] -> [(State [[Maybe String]], State String)] -> F String -> (F String, [State String])
+rename xs (F []) pairs last = (last, map snd pairs)
+rename xs (F ((s0,x,s1):ss)) pairs last =  
+
+renameMinDFA :: DFA [[Maybe String]] -> DFA String
+renameMinDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
+    where i' = State "i"
 
 
 
