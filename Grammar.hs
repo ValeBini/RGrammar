@@ -1,6 +1,37 @@
+module Grammar (
+    gramTermToGram,
+    gramToNFA,
+    nfaToDFA,
+    minimizeDFA
+    )
+    where
+
 import Data.Set (fromList, isSubsetOf, intersection, empty)
 import Data.List (union ,(\\))
 import Common
+
+
+gramTermToGram :: GramTerm -> Gram
+gramTermToGram (GProd p ps) = let (G nts ts prods sigma) = gramTermToGram ps
+                               in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+        where prods' = gramTermToProd p
+              (ts', nts') = tntFromProd prods'
+              tntFromProd [] = ([],[])
+              tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
+                                    in case r of
+                                        PT nt t -> (union [t] t', union [nt] nt')
+                                        PN nt0 t nt1 -> (union [t] t', union [nt0,nt1] nt')
+                                        PE nt -> (t', union [nt] nt')
+              
+gramTermToProd :: GramTerm -> [Prod]
+gramTermToProd (GRule (GNT l) (GOr r rs)) = case r of
+                                              GEmpty -> (PE (NT l)):(gramTermToProd (GRule (GNT l) rs))
+                                              Common.GT t -> (PT (NT l) (T t)):(gramTermToProd (GRule (GNT l) rs))
+                                              GTNT t nt -> (PN (NT l) (T t) (NT nt)):(gramTermToProd (GRule (GNT l) rs))
+gramTermToProd (GRule (GNT l) r) =  case r of
+                                      GEmpty -> [PE (NT l)]
+                                      Common.GT t -> [PT (NT l) (T t)]
+                                      GTNT t nt -> [PN (NT l) (T t) (NT nt)]
 
 gramToNFA :: Gram -> NFA (Maybe String)
 gramToNFA (G nts ts ps nt) = NA syms states r ac i
@@ -73,9 +104,6 @@ minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
 
           
           
-
-
-
 {-}
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
 nfaToDFA (NA xs st (R rs) ac i) = DA xs st' f ac' i'

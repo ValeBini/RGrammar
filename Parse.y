@@ -1,82 +1,47 @@
 {
-module Parse where
+module Parse
 import Common
-import Data.Maybe
-import Data.Char
-
 }
 
 %monad { P } { thenP } { returnP }
-%name parseStmt Def
-%name parseStmts Defs
-%name term Exp
+%name parse Gram
 
 %tokentype { Token }
 %lexer {lexer} {TEOF}
 
 %token
-    '->'    { TArrow }
+    '\\'    { TEmpty }
     '|'     { TOr }
+    '->'    { TArrow }
+    '&'     { TSigma }
+    ';'     { TEnd }
+    '"'     { TQuote }
     T       { TT $$ }
     NT      { TNT $$ }
-    'sigma' { TSigma }
-    '\'     { TEmpty }
-    ';'     { TEnd }    
 
 
 
 %%
 
-LeftSide    :  NT                          { $1 }
+LeftSide    :  NT                          { GNT $1 }
 
-Right       :  T                           { $1 }
-            |  NT T                        { $1 $2 }
-            |  '\'                         { LEmpty }
+Right       :  '"' T '"'                   { GT $2 }
+            |  '"' T '"' NT                { GTNT $1 $3 }
+            |  '\\'                        { GEmpty }
 
 RightSide   : Right                        { $1 }
-            | Right '|' RightSide          { $1 $3 }
+            | Right '|' RightSide          { GOr $1 $3 }
 
-Prod        : Left '->' Right              { Rule $1 $3 }
+Prod        : LeftSide '->' RightSide      { GRule $1 $3 }
 
-P       : Prod                         { $1 }
-        | Prod 
-
-
-Def     :  Defexp                      { $1 }
-        |  Exp	                       { Eval $1 }
-Defexp  : DEF VAR '=' Exp              { Def $2 $4 }
-
-Exp     :: { LamTerm }
-        : '\\' VAR ':' Type '.' Exp    { Abs $2 $4 $6 }
-        | REC Atom Atom Atom           { LR $2 $3 $4 }
-        | RECL Atom Atom Atom          { LRL $2 $3 $4 }
-        | SUC Atom				             { LSuc $2 }
-        | CONS Atom Atom               { LCons $2 $3 }
-        | NAbs                         { $1 }
-
-NAbs    :: { LamTerm }
-        : NAbs Atom                    { App $1 $2 }
-        | Atom                         { $1 }
-
-Atom    :: { LamTerm }
-        : VAR                          { LVar $1 }
-        | INT                          { LNat $1 }
-        | NIL                          { LNil }
-        | '(' Exp ')'                  { $2 }
-
-Type    : TYPE                         { Base }
-        | NAT                          { N }
-        | LIST                         { ListN }
-        | Type '->' Type               { Fun $1 $3 }
-        | '(' Type ')'                 { $2 }
-
-Defs    : Defexp Defs                  { $1 : $2 }
-        |                              { [] }
+Gram        : Prod                         { $1 }
+            | Prod ';' Gram                { GProd $1 $3 }
 
 {
 
 data ParseResult a = Ok a | Failed String
                      deriving Show
+
 type LineNumber = Int
 type P a = String -> LineNumber -> ParseResult a
 
@@ -102,63 +67,41 @@ catchP m k = \s l -> case m s l of
 happyError :: P a
 happyError = \ s i -> Failed $ "Línea "++(show (i::LineNumber))++": Error de parseo\n"++(s)
 
-data Token = TVar String
-               | TType
-               | TDef
-               | TAbs
-               | TDot
-               | TOpen
-               | TClose
-               | TColon
-               | TArrow
-               | TEquals
-               | TEOF
-               | TNat
-               | TRec
-               | TSuc
-               | TInt Int
-               | TNil
-               | TListN
-               | TCons
-               | TRL
+
+data Token = TArrow
+                | TOr
+                | TT String
+                | TNT String
+                | TSigma
+                | TEnd
+                | TQuote
+                | TEmpty
                deriving Show
 
 ----------------------------------
-isNumber' :: String -> Bool
-isNumber' xs = and (map isDigit xs)
 
 lexer cont s = case s of
                     [] -> cont TEOF []
                     ('\n':s)  ->  \line -> lexer cont s (line + 1)
                     (c:cs)
                           | isSpace c -> lexer cont cs
-                          | isAlphaNum c -> lexVar (c:cs)
+                          | isAlpha c -> lexNT (c:cs)
                     ('-':('-':cs)) -> lexer cont $ dropWhile ((/=) '\n') cs
                     ('{':('-':cs)) -> consumirBK 0 0 cont cs
       	            ('-':('}':cs)) -> \ line -> Failed $ "Línea "++(show line)++": Comentario no abierto"
                     ('-':('>':cs)) -> cont TArrow cs
-                    ('\\':cs)-> cont TAbs cs
-                    ('.':cs) -> cont TDot cs
-                    ('(':cs) -> cont TOpen cs
-                    ('-':('>':cs)) -> cont TArrow cs
-                    (')':cs) -> cont TClose cs
-                    (':':cs) -> cont TColon cs
-                    ('=':cs) -> cont TEquals cs
+                    ('|':cs) -> cont TOr cs
+                    ('&':cs) -> cont TSigma cs
+                    ('/':cs) -> cont TEmpty cs
+                    (';':cs) -> cont TEnd cs
+                    ('"':cs) -> lexT (c:cs)
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
-                    where lexVar cs = case span isAlphaNum cs of
-                                           ("B",rest)   -> cont TType rest
-                                           ("R",rest)   -> cont TRec rest
-                                           ("suc", rest)-> cont TSuc rest
-                                           ("Nat",rest) -> cont TNat rest
-                                           ("ListNat", rest) -> cont TListN rest
-                                           ("nil", rest) -> cont TNil rest
-                                           ("cons", rest)-> cont TCons rest
-                                           ("RL", rest)  -> cont TRL rest
-                                           ("def",rest) -> cont TDef rest
-                                           (var,rest)   -> if (isNumber' var) then cont (TInt (read var)) rest
-                                                                              else cont (TVar var) rest
+                    where lexNT cs = let (nt, rest) = span isAlpha cs 
+                                        in cont (TNT nt) rest
+                          lexT cs = let (t, rest) = span (/= '"') cs
+                                        in cont (TT t) (tail rest)
                           consumirBK anidado cl cont s = case s of
-                                                                      ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
+                                                              ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
 		                                                      ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs
 		                                                      ('-':('}':cs)) -> case anidado of
 			                                                                     0 -> \line -> lexer cont cs (line+cl)
@@ -166,7 +109,5 @@ lexer cont s = case s of
 		                                                      ('\n':cs) -> consumirBK anidado (cl+1) cont cs
 		                                                      (_:cs) -> consumirBK anidado cl cont cs
 
-stmts_parse s = parseStmts s 1
-stmt_parse s = parseStmt s 1
-term_parse s = term s 1
+gram_parse s = parse s 1
 }
