@@ -1,6 +1,7 @@
 {
-module Parse
+module Parse where
 import Common
+import Data.Char
 }
 
 %monad { P } { thenP } { returnP }
@@ -25,8 +26,8 @@ import Common
 
 LeftSide    :  NT                          { GNT $1 }
 
-Right       :  '"' T '"'                   { GT $2 }
-            |  '"' T '"' NT                { GTNT $1 $3 }
+Right       :  '"' T '"'                   { Common.GT $2 }
+            |  '"' T '"' NT                { GTNT $2 $4 }
             |  '\\'                        { GEmpty }
 
 RightSide   : Right                        { $1 }
@@ -76,6 +77,7 @@ data Token = TArrow
                 | TEnd
                 | TQuote
                 | TEmpty
+                | TEOF
                deriving Show
 
 ----------------------------------
@@ -94,7 +96,7 @@ lexer cont s = case s of
                     ('&':cs) -> cont TSigma cs
                     ('/':cs) -> cont TEmpty cs
                     (';':cs) -> cont TEnd cs
-                    ('"':cs) -> lexT (c:cs)
+                    ('"':cs) -> lexT cs
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
                     where lexNT cs = let (nt, rest) = span isAlpha cs 
                                         in cont (TNT nt) rest
@@ -102,12 +104,12 @@ lexer cont s = case s of
                                         in cont (TT t) (tail rest)
                           consumirBK anidado cl cont s = case s of
                                                               ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
-		                                                      ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs
-		                                                      ('-':('}':cs)) -> case anidado of
-			                                                                     0 -> \line -> lexer cont cs (line+cl)
-			                                                                     _ -> consumirBK (anidado-1) cl cont cs
-		                                                      ('\n':cs) -> consumirBK anidado (cl+1) cont cs
-		                                                      (_:cs) -> consumirBK anidado cl cont cs
+                                                              ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs
+                                                              ('-':('}':cs)) -> case anidado of
+			                                                                         0 -> \line -> lexer cont cs (line+cl)
+			                                                                         _ -> consumirBK (anidado-1) cl cont cs
+                                                              ('\n':cs) -> consumirBK anidado (cl+1) cont cs
+                                                              (_:cs) -> consumirBK anidado cl cont cs
 
 gram_parse s = parse s 1
 }

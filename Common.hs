@@ -37,3 +37,7 @@ data DFA a = DA [Sym] [State a] (F a) [State a] (State a)
 
 data NFA a = NA [Sym] [State a] (R a) [State a] (State a)
     deriving Show
+
+type Name = String
+
+type NameEnv = [(Name, Gram)]
