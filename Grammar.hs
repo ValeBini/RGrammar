@@ -28,10 +28,18 @@ gramTermToProd (GRule (GNT l) (GOr r rs)) = case r of
                                               GEmpty -> (PE (NT l)):(gramTermToProd (GRule (GNT l) rs))
                                               Common.GT t -> (PT (NT l) (T t)):(gramTermToProd (GRule (GNT l) rs))
                                               GTNT t nt -> (PN (NT l) (T t) (NT nt)):(gramTermToProd (GRule (GNT l) rs))
+gramTermToProd (GRule GSigma (GOr r rs)) = case r of
+                                            GEmpty -> (PE (NT "&")):(gramTermToProd (GRule GSigma rs))
+                                            Common.GT t -> (PT (NT "&") (T t)):(gramTermToProd (GRule GSigma rs))
+                                            GTNT t nt -> (PN (NT "&") (T t) (NT nt)):(gramTermToProd (GRule GSigma rs))
 gramTermToProd (GRule (GNT l) r) =  case r of
                                       GEmpty -> [PE (NT l)]
                                       Common.GT t -> [PT (NT l) (T t)]
                                       GTNT t nt -> [PN (NT l) (T t) (NT nt)]
+gramTermToProd (GRule GSigma r) = case r of
+                                    GEmpty -> [PE (NT "&")]
+                                    Common.GT t -> [PT (NT "&") (T t)]
+                                    GTNT t nt -> [PN (NT "&") (T t) (NT nt)]
 
 gramToNFA :: Gram -> NFA (Maybe String)
 gramToNFA (G nts ts ps nt) = NA syms states r ac i

@@ -1,8 +1,10 @@
 module Common where
 
 data GramTerm = GNT String
+              | GSigma
               | GT String
               | GTNT String String
+              | GTSigma String 
               | GEmpty
               | GOr GramTerm GramTerm
               | GRule GramTerm GramTerm

@@ -16,7 +16,8 @@ import Data.Char
     '->'    { TArrow }
     '&'     { TSigma }
     ';'     { TEnd }
-    '"'     { TQuote }
+    '{'     { TOpen }
+    '}'     { TClose }
     T       { TT $$ }
     NT      { TNT $$ }
 
@@ -25,19 +26,22 @@ import Data.Char
 %%
 
 LeftSide    :  NT                          { GNT $1 }
+            |  '&'                         { GSigma }
 
-Right       :  '"' T '"'                   { Common.GT $2 }
-            |  '"' T '"' NT                { GTNT $2 $4 }
+Right       :  T                           { Common.GT $1 }
+            |  T NT                        { GTNT $1 $2 }
+            |  T '&'                       { GTSigma $1 }
             |  '\\'                        { GEmpty }
 
-RightSide   : Right                        { $1 }
-            | Right '|' RightSide          { GOr $1 $3 }
+RightSide   : Right '|' RightSide          { GOr $1 $3 }
+            | Right                        { $1 }
 
-Prod        : LeftSide '->' RightSide      { GRule $1 $3 }
+Rule        : LeftSide '->' RightSide      { GRule $1 $3 }
 
-Gram        : Prod                         { $1 }
-            | Prod ';' Gram                { GProd $1 $3 }
+Prod        : Rule ';' Prod                { GProd $1 $3 }
+            | Rule ';'                     { $1 }
 
+Gram        : '{' Prod '}'                 { $2 }
 {
 
 data ParseResult a = Ok a | Failed String
@@ -75,9 +79,10 @@ data Token = TArrow
                 | TNT String
                 | TSigma
                 | TEnd
-                | TQuote
                 | TEmpty
                 | TEOF
+                | TOpen
+                | TClose
                deriving Show
 
 ----------------------------------
@@ -94,9 +99,11 @@ lexer cont s = case s of
                     ('-':('>':cs)) -> cont TArrow cs
                     ('|':cs) -> cont TOr cs
                     ('&':cs) -> cont TSigma cs
-                    ('/':cs) -> cont TEmpty cs
+                    ('\\':cs) -> cont TEmpty cs
                     (';':cs) -> cont TEnd cs
                     ('"':cs) -> lexT cs
+                    ('{':cs) -> cont TOpen cs
+                    ('}':cs) -> cont TClose cs
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
                     where lexNT cs = let (nt, rest) = span isAlpha cs 
                                         in cont (TNT nt) rest
