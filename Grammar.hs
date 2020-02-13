@@ -12,8 +12,12 @@ import Common
 
 
 gramTermToGram :: GramTerm -> Gram
-gramTermToGram (GProd p ps) = let (G nts ts prods sigma) = gramTermToGram ps
-                               in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+gramTermToGram (GProd p ps) = case ps of
+                                GProd r rs -> let G nts ts prods sigma = gramTermToGram (GProd r rs)
+                                              in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+                                GRule l r -> let prods = gramTermToProd ps
+                                                 (ts, nts) = tntFromProd prods
+                                              in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
         where prods' = gramTermToProd p
               (ts', nts') = tntFromProd prods'
               tntFromProd [] = ([],[])
@@ -22,6 +26,7 @@ gramTermToGram (GProd p ps) = let (G nts ts prods sigma) = gramTermToGram ps
                                         PT nt t -> (union [t] t', union [nt] nt')
                                         PN nt0 t nt1 -> (union [t] t', union [nt0,nt1] nt')
                                         PE nt -> (t', union [nt] nt')
+
               
 gramTermToProd :: GramTerm -> [Prod]
 gramTermToProd (GRule (GNT l) (GOr r rs)) = case r of
@@ -111,7 +116,13 @@ minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
           i' = let [s] = [s | s<-st', elem (runState i) (runState s)] in s
 
           
+complementDFA :: Eq a => DFA a -> DFA a
+complementDFA (DA xs st (F f) ac i) = DA xs st (F f) (st \\ ac) i
           
+
+--dfaIntersection :: DFA a -> DFA b -> DFA (a,b)
+--dfaIntersection (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) =
+
 {-}
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
 nfaToDFA (NA xs st (R rs) ac i) = DA xs st' f ac' i'

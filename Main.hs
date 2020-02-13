@@ -16,7 +16,7 @@ module Main where
   import Common
   import Grammar
   import Parse
---import PrettyPrinter
+  import PrettyPrinter
 ---------------------
 --- Interpreter
 ---------------------
@@ -110,7 +110,7 @@ module Main where
          Print s    ->  let g = lookfor s state
                           in case g of
                               Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
-                              Just g' -> printGram g' >> return (Just state)
+                              Just g' -> printGrammar g' >> return (Just state)
          {-}
          Recompile  -> if null lfile 
                         then putStrLn "No hay un archivo cargado.\n" >> 
@@ -171,11 +171,11 @@ module Main where
       maybe (return ()) (printStmt . fmap (\y -> (y, conversion y)) ) x'
 -}
 
-  printGram ::  Gram -> IO ()
-  printGram gram =  
+  printGrammar ::  Gram -> IO ()
+  printGrammar gram =  
     do
-      let outtext = show gram --printGram gram
-      putStrLn outtext
+      let outtext = printGram gram
+      putStrLn (render outtext)
 
   parseIO :: String -> (String -> ParseResult a) -> String -> IO (Maybe a)
   parseIO f p x = case p x of
