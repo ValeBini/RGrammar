@@ -23,21 +23,24 @@ data Prod = PT NT T | PN NT T NT | PE NT
 data Gram = G [NT] [T] [Prod] NT
     deriving Show
 
-newtype Sym = Sym {runSym :: Maybe String} -- el simbolo Nothing es la palabra vacia
+newtype NSym = NSym {runNSym :: Maybe String} -- el simbolo Nothing es la palabra vacia
+    deriving (Eq, Ord, Show)
+
+newtype DSym = DSym {runDSym :: String}
     deriving (Eq, Ord, Show)
 
 newtype State a = State {runState :: a}
     deriving (Eq, Ord, Show)
 
-data R a = R [(State a, Sym, State a)]
+data R a = R [(State a, NSym, State a)]
     deriving Show
 
-data F a = F [(State a, Sym, State a)]
+data F a = F [(State a, DSym, State a)]
     deriving Show
 
-data DFA a = DA [Sym] [State a] (F a) [State a] (State a)
+data DFA a = DA [DSym] [State a] (F a) [State a] (State a)
 
-data NFA a = NA [Sym] [State a] (R a) [State a] (State a)
+data NFA a = NA [NSym] [State a] (R a) [State a] (State a)
     deriving Show
 
 type Name = String

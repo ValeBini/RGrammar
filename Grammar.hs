@@ -7,7 +7,7 @@ module Grammar (
     where
 
 import Data.Set (fromList, isSubsetOf, intersection, empty)
-import Data.List (union ,(\\))
+import Data.List (union ,(\\), delete, elemIndex)
 import Common
 
 
@@ -48,10 +48,10 @@ gramTermToProd (GRule GSigma r) = case r of
 
 gramToNFA :: Gram -> NFA (Maybe String)
 gramToNFA (G nts ts ps nt) = NA syms states r ac i
-  where syms = map (\t -> Sym (Just (runT t))) ts
+  where syms = map (\t -> NSym (Just (runT t))) ts
         states = ((State Nothing):(map (\nt -> State (Just (runNT nt))) nts))
-        r =  R (union [(State (Just (runNT s)), Sym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (PN s x b) ps]
-                        [(State (Just (runNT s)), Sym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (PT s x) ps])
+        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (PN s x b) ps]
+                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (PT s x) ps])
         ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (PE s) ps]
         i = (State (Just (runNT nt)))
 
@@ -62,8 +62,8 @@ included xs ys = let xs' = map (\x -> fromList (runState x)) xs
                  in isSubsetOf (fromList xs') (fromList ys')
 -}
 
-included :: F [Maybe String] -> F [Maybe String] -> Bool
-included (F xs) (F ys) = let xs' = map (\(s1, s, s2) -> (fromList (runState s1), s, fromList (runState s2))) xs
+included :: R [Maybe String] -> R [Maybe String] -> Bool
+included (R xs) (R ys) = let xs' = map (\(s1, s, s2) -> (fromList (runState s1), s, fromList (runState s2))) xs
                              ys' = map (\(s1, s, s2) -> (fromList (runState s1), s, fromList (runState s2))) ys
                          in isSubsetOf (fromList xs') (fromList ys')
 
@@ -73,25 +73,29 @@ equal xs ys = let xs' = map (\x -> fromList (runState x)) xs
               in (fromList xs') == (fromList ys')
 
 
-dfaF' :: [Sym] -> R (Maybe String) -> [State (Maybe String)] -> F [Maybe String] -> F [Maybe String] -> F [Maybe String]
-dfaF' xs (R rs) sts (F fall) (F flast) = let f = concat (map (\(s1, x1, s1') -> map (\x -> (s1', x, t s1' x)) xs) flast)
-                                         in if included (F f) (F fall) then (F fall) else (dfaF' xs (R rs) sts (F (union fall f)) (F f))
+dfaF' :: [NSym] -> R (Maybe String) -> [State (Maybe String)] -> R [Maybe String] -> R [Maybe String] -> R [Maybe String]
+dfaF' xs (R rs) sts (R fall) (R flast) = let f = concat (map (\(s1, x1, s1') -> map (\x -> (s1', x, t s1' x)) xs) flast)
+                                         in if included (R f) (R fall) then (R fall) else (dfaF' xs (R rs) sts (R (union fall f)) (R f))
          where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
 
-dfaF :: [Sym] -> R (Maybe String) -> [State (Maybe String)] -> State [Maybe String] -> F [Maybe String]
+dfaF :: [NSym] -> R (Maybe String) -> [State (Maybe String)] -> State [Maybe String] -> R [Maybe String]
 dfaF xs (R rs) sts i = let f = map (\x -> (i, x, t i x)) xs
-                       in dfaF' xs (R rs) sts (F f) (F f)
+                       in dfaF' xs (R rs) sts (R f) (R f)
         where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
 
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
-nfaToDFA (NA xs st (R rs) ac i) = DA xs st' (F f) ac' i'
-    where i' = State (union [runState i] [runState s | s<-st, elem (i, Sym Nothing, s) rs])
-          (F f) = dfaF xs (R rs) st i'
+nfaToDFA (NA xs st (R rs) ac i) = DA xs' st' (F f) ac' i'
+    where xs' = concat (map (\(NSym x) -> case x of
+                                            Just s -> [DSym s]
+                                            Nothing -> []) xs)
+          i' = State (union [runState i] [runState s | s<-st, elem (i, NSym Nothing, s) rs])
+          f = map (\(s0,NSym (Just x),s1) -> (s0,DSym x,s1)) f'
+          R f' = (dfaF xs (R rs) st i')
           st' = union (map (\(a,b,c)->a) f) (map (\(a,b,c)->c) f)
           ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (map runState ac))) /= empty]
 
 
-nextPartition :: [State [Maybe String]] -> [[State [Maybe String]]] -> [Sym] -> F [Maybe String] -> [[State [Maybe String]]]
+nextPartition :: [State [Maybe String]] -> [[State [Maybe String]]] -> [DSym] -> F [Maybe String] -> [[State [Maybe String]]]
 nextPartition sts last xs (F f) = concat (map (partition []) last)
     where partition new [] = new
           partition [] (s:ss) = partition [[s]] ss
@@ -102,9 +106,9 @@ nextPartition sts last xs (F f) = concat (map (partition []) last)
           numOfPart [s] (p:ps) i = if (elem s p) then i 
                                                  else numOfPart [s] ps (i+1)
 
-minimumStates :: [Sym] -> [State [Maybe String]] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [[Maybe String]]]
+minimumStates :: [DSym] -> [State [Maybe String]] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [[Maybe String]]]
 minimumStates xs sts p (F f) = let nextp = nextPartition sts p xs (F f)
-                            in if p == nextp then (map (\ss -> State ((map runState ss))) p)
+                               in if p == nextp then (map (\ss -> State ((map runState ss))) p)
                                              else minimumStates xs sts nextp (F f)
 
 minimizeDFA :: DFA [Maybe String] -> DFA [[Maybe String]]
@@ -119,9 +123,105 @@ minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
 complementDFA :: Eq a => DFA a -> DFA a
 complementDFA (DA xs st (F f) ac i) = DA xs st (F f) (st \\ ac) i
           
+--asumo que tienen el mismo alfabeto
+dfaIntersection :: (Eq a, Eq b) => DFA a -> DFA b -> DFA (a,b)
+dfaIntersection (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) =
+    DA xs st (F f) ac i
+    where xs = xs0
+          st = union (union [s | s <- map first f] [s | s <- map third f]) [i]
+          f = [(State (s0,s1), x, State (s0',s1')) | x<-xs, (State s0)<-st0, (State s0')<-st0,
+                                                     (State s1)<-st1, (State s1')<-st1, 
+                                                     elem (State s0, x, State s0') f0,
+                                                     elem (State s1, x, State s1') f1]
+          ac = [State (s0,s1) | (State (s0,s1))<-st, elem (State s0) ac0, elem (State s1) ac1]
+          i = State (runState i0, runState i1)
+          first (a,b,c) = a
+          third (a,b,c) = c
 
---dfaIntersection :: DFA a -> DFA b -> DFA (a,b)
---dfaIntersection (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) =
+dfaUnion :: (Eq a, Eq b) => DFA a -> DFA b -> DFA (a,b)
+dfaUnion (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) = DA xs st (F f) ac i
+    where xs = xs0
+          st = union (union [s | s <- map first f] [s | s <- map third f]) [i]
+          f = [(State (s0,s1), x, State (s0',s1')) | x<-xs, (State s0)<-st0, (State s0')<-st0,
+                                                     (State s1)<-st1, (State s1')<-st1, 
+                                                     elem (State s0, x, State s0') f0,
+                                                     elem (State s1, x, State s1') f1]
+          ac = [State (s0,s1) | (State (s0,s1))<-st, (elem (State s0) ac0) || (elem (State s1) ac1)]
+          i = State (runState i0, runState i1)
+          first (a,b,c) = a
+          third (a,b,c) = c
+
+
+nfaRename :: Eq a => NFA a -> Int -> NFA Int
+nfaRename (NA xs st (R r) ac i) n = NA xs st' (R r') ac' i'
+    where st' = let l = n + (length st) - 1
+                in map (\x -> State x) (drop n [0 .. l])
+          r' = map (\(s0, x, s1) -> (rename s0, x, rename s1)) r
+          ac' = map rename ac
+          i' = rename i
+          rename (State s) = let (Just pos) = elemIndex (State s) st
+                             in State (n+pos)
+
+nfaConcatenation :: (Eq a, Eq b) => NFA a -> NFA b -> NFA Int
+nfaConcatenation nfa0 nfa1 =
+    let (NA xs0 st0 (R r0) ac0 i0) = nfaRename nfa0 0
+        (NA xs1 st1 (R r1) ac1 i1) = nfaRename nfa1 (length st0)
+        transitions = [(s0, NSym Nothing, i1) | s0 <- ac0]
+        r = r0 ++ r1 ++ transitions
+    in NA xs0 (st0 ++ st1) (R r) ac1 i0
+
+nfaReverse :: NFA a -> NFA (Maybe a)
+nfaReverse (NA xs st (R r) ac i) = NA xs st' (R r') ac' i'
+    where st' = (State Nothing) : (map (\(State s) -> State (Just s)) st)
+          r' = r0 ++ r1
+          r0 = (map (\(State s0, x, State s1) -> (State (Just s1), x, State (Just s0))) r) 
+          r1 = [(State Nothing, NSym Nothing, State (Just s)) | (State s) <- ac]
+          ac' = [State (Just (runState i))]
+          i' = State Nothing
+
+emptyLanguage :: (Eq a, Ord a) => DFA a -> Bool
+emptyLanguage dfa@(DA xs st (F f) ac i) = let rs = reachedStates dfa [i]
+                                          in rs \\ ac == rs
+
+reachedStates :: (Eq a, Ord a) => DFA a -> [State a] -> [State a]
+reachedStates dfa@(DA xs st (F f) ac i) rs = let old = fromList rs
+                                                 new = fromList newStates
+                                             in if isSubsetOf new old then rs
+                                                                      else reachedStates dfa (union rs newStates)
+    where newStates = concat (map (\s -> map (\x -> ff s x) xs) rs)
+          ff s x = ff' s x f
+          ff' s x ((s0,x0,s1):ss) = if s==s0 && x==x0 then s1
+                                                      else ff' s x ss 
+
+
+eqGrammar :: Gram -> Gram -> Bool
+eqGrammar g0@(G nt0 t0 p0 i0) g1@(G nt1 t1 p1 i1) = if t0 == t1 then checkEq 
+                                                                else False
+    where checkEq = let dfa0 = (minimizeDFA (nfaToDFA (gramToNFA g0)))
+                        dfa1 = (minimizeDFA (nfaToDFA (gramToNFA g1)))
+                        l0 = dfaIntersection (complementDFA dfa0) dfa1
+                        l1 = dfaIntersection (complementDFA dfa1) dfa0
+                        in (emptyLanguage l0) && (emptyLanguage l1)
+
+ntsList :: [NT]
+ntsList = map (\s -> NT [s]) ('&' : ['A' .. 'Z'])
+
+dfaToGram :: Eq a => DFA a -> Gram
+dfaToGram dfa@(DA xs st (F f) ac i) = G nts ts ps nt
+    where nts = let l = length st
+                in take l ntsList
+          ts = map (\x -> T (runDSym x)) xs
+          ps = (map fToProd f) ++ finalprods
+          nt = NT "&"
+          fToProd (s0,DSym x,s1) = let nt0 = findNT s0
+                                       nt1 = findNT s1
+                                    in PN nt0 (T x) nt1
+          finalprods = map (\s -> PE (findNT s)) ac
+          findNT s = let Just i = elemIndex s st'
+                     in nts !! i
+          st' = i:(delete i st)
+          
+
 
 {-}
 nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
