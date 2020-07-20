@@ -92,11 +92,13 @@ module Main where
        else
          return (InteractiveStmt x)
 
+-- toma un string (nombre del archivo), si es del tipo "x.gram" devuelve (Just x), sino Nothing
   getName :: String -> Maybe String
   getName s = let r = reverse s
               in if isPrefixOf "marg." r then (Just (reverse (drop 5 r)))
                                          else Nothing
 
+-- dado un nombre y un estado del entorno busca la gramatica correspondiente al nombre
   lookfor :: String -> St -> Maybe Gram
   lookfor s (S []) = Nothing 
   lookfor s (S ((name,gram):xs)) = if name == s then Just gram

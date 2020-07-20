@@ -21,7 +21,24 @@ import Data.Char
     '}'     { TClose }
     T       { TT $$ }
     NT      { TNT $$ }
+    '='     { TDef }
+    '=='    { TEq }
+    '+'     { TUnion }
+    '!'     { TIntersec }
+    '~'     { TReverse }
+    '^'     { TConcat }
 
+%left '=='
+%left '='
+%left '+' 
+%left '!'
+%left '^'
+%nonassoc '~'
+%nonassoc '{' '}'
+%nonassoc '->'
+%nonassoc ';'
+%left '|'
+%nonassoc '&'
 
 
 %%
@@ -43,6 +60,16 @@ Prod        : Rule ';' Prod                { GProd $1 $3 }
             | Rule ';'                     { $1 }
 
 Gram        : '{' Prod '}'                 { $2 }
+
+Grammar     : NT                           { $1 }
+            | Grammar '+' Grammar          { SUnion $1 $3 }
+            | Grammar '!' Grammar          { SInter $1 $3 }
+            | '~' Grammar                  { SRever $2 }
+            | Grammar '^' Grammar          { SConcat $1 $3}
+
+Stmt        : NT '=' Grammar               { SDef $1 $3 }
+            | Grammar '==' Grammar         { SEq $1 $3 }
+
 {
 
 data ParseResult a = Ok a | Failed String
@@ -73,7 +100,6 @@ catchP m k = \s l -> case m s l of
 happyError :: P a
 happyError = \ s i -> Failed $ "Línea "++(show (i::LineNumber))++": Error de parseo\n"++(s)
 
-
 data Token = TArrow
                 | TOr
                 | TT String
@@ -84,6 +110,12 @@ data Token = TArrow
                 | TEOF
                 | TOpen
                 | TClose
+                | TDef
+                | TEq
+                | TUnion
+                | TIntersec
+                | TReverse
+                | TConcat
                deriving Show
 
 ----------------------------------
@@ -105,6 +137,12 @@ lexer cont s = case s of
                     ('"':cs) -> lexT cs
                     ('{':cs) -> cont TOpen cs
                     ('}':cs) -> cont TClose cs
+                    ('=':('=':cs)) -> cont TEq cs
+                    ('=':cs) -> cont TDef cs
+                    ('+':cs) -> cont TUnion cs
+                    ('!':cs) -> cont TIntersec cs
+                    ('~':cs) -> cont TReverse cs
+                    ('^':cs) -> cont TConcat cs
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
                     where lexNT cs = let (nt, rest) = span isAlpha cs 
                                         in cont (TNT nt) rest
@@ -119,5 +157,6 @@ lexer cont s = case s of
                                                               ('\n':cs) -> consumirBK anidado (cl+1) cont cs
                                                               (_:cs) -> consumirBK anidado cl cont cs
 
-gram_parse s = parse s 1
+gram_parse s = parse_Gram s 1
+stmt_parse s = parse_Stmt s 1
 }

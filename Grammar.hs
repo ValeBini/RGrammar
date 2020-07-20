@@ -222,15 +222,3 @@ dfaToGram dfa@(DA xs st (F f) ac i) = G nts ts ps nt
           st' = i:(delete i st)
           
 
-
-{-}
-nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
-nfaToDFA (NA xs st (R rs) ac i) = DA xs st' f ac' i'
-    where i' = State (union [runState i] [runState s | s<-st, elem (i, Sym Nothing, s) rs])
-          st' = dfaStates xs rs [i']
-          dfaStates sx sr sst = let sst' = union sst (concat (map (\s -> map (\x -> t s x) sx) sst))
-                                 in if (equal sst sst') then sst else dfaStates sx sr sst'
-          t sts x = concat (map (\s -> State [s' | s'<-st', elem (State s, x, State s') rs]) (runState sts))
-          f = F [(s, x, t s x) | s<-st', x<-xs]
-          ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (runState ac))) /= empty]
--}
