@@ -55,7 +55,7 @@ module Main where
                   maybe (return ()) rec st'
     in
       do
-        state' <- compileFiles (prelude:args) state 
+        state' <- compileFiles args state 
         putStrLn ("Intérprete de " ++ iname ++ ".\n" ++
                   "Escriba :? para recibir ayuda.")
         --  enter loop
@@ -63,12 +63,12 @@ module Main where
 
   data Command = Compile String
                | Print String
-              -- | Recompile  
+               | Recompile String 
                | Browse
                | Quit
                | Help
                | Noop
-               | FindType String
+               | InteractiveStmt String
 
   
   interpretCommand :: String -> IO Command
@@ -90,7 +90,12 @@ module Main where
                            return Noop
                                                         
        else
-         return (Compile x)
+         return (InteractiveStmt x)
+
+  getName :: String -> Maybe String
+  getName s = let r = reverse s
+              in if isPrefixOf "marg." r then (Just (reverse (drop 5 r)))
+                                         else Nothing
 
   lookfor :: String -> St -> Maybe Gram
   lookfor s (S []) = Nothing 
@@ -105,18 +110,24 @@ module Main where
          Help       ->  putStr (helpTxt commands) >> return (Just state)
          Browse     ->  do  putStr (unlines [ s | s <- reverse (nub (map fst env)) ])
                             return (Just state)
-         Compile c  ->  do  state' <- compileFile state c
-                            return (Just state')
+         Compile c  ->  let name = getName c
+                        in case name of
+                          Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                          Just s -> let g = lookfor s state
+                                    in case g of
+                                         Nothing -> do state' <- compileFile state c s
+                                                       return (Just state')
+                                         Just g' -> putStrLn "La gramatica ya existe" >> return (Just state)
          Print s    ->  let g = lookfor s state
                           in case g of
                               Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
                               Just g' -> printGrammar g' >> return (Just state)
-         {-}
-         Recompile  -> if null lfile 
-                        then putStrLn "No hay un archivo cargado.\n" >> 
-                             return (Just state) 
-                        else handleCommand state (Compile (CompileFile lfile))
-         -}
+         Recompile c  -> let name = getName c
+                         in case name of
+                             Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                             Just s -> do state' <- recompileFile state c s
+                                          return (Just state') 
+         InteractiveStmt s -> compilePhrase state s
                
 
   data InteractiveCommand = Cmd [String] String (String -> Command) String
@@ -125,8 +136,8 @@ module Main where
   commands
     =  [ Cmd [":browse"]      ""        (const Browse) "Ver los nombres en scope",
          Cmd [":load"]        "<file>"  (Compile)      "Cargar una gramática desde un archivo",
-         Cmd [":print"]       "<gram>"  Print "Imprime una gramática", --preguntar
-         --Cmd [":reload"]      "<file>"  (const Recompile) "Volver a cargar el último archivo",
+         Cmd [":print"]       "<gram>"  Print          "Imprime una gramática",    
+         Cmd [":reload"]      "<file>"  (Recompile)    "Volver a cargar un archivo. Si no estaba cargado, cargarlo",
          Cmd [":quit"]        ""        (const Quit)   "Salir del intérprete",
          Cmd [":help",":?"]   ""        (const Help)   "Mostrar esta lista de comandos" ]
   
@@ -141,11 +152,15 @@ module Main where
 
   compileFiles :: [String] -> St -> IO St
   compileFiles [] s      = return s
-  compileFiles (x:xs) s  = do s' <- compileFile s x
-                              compileFiles xs s'
+  compileFiles (x:xs) s  = let name = getName x
+                           in case name of
+                                Nothing -> putStrLn ("El nombre del archivo " ++ x ++ " no es valido") >> compileFiles xs s
+                                Just n -> do s' <- compileFile s x n
+                                             compileFiles xs s'
 
-  compileFile :: St -> String -> IO St
-  compileFile state@(S {..}) f = do
+
+  compileFile :: St -> String -> String -> IO St
+  compileFile state@(S {..}) f name = do
       putStrLn ("Abriendo "++f++"...")
       let f'= reverse(dropWhile isSpace (reverse f))
       x     <- catch (readFile f')
@@ -153,23 +168,18 @@ module Main where
                            hPutStr stderr ("No se pudo abrir el archivo " ++ f' ++ ": " ++ err ++"\n")
                            return "")
       gram <- parseIO f' (gram_parse) x
-      maybe (return state) (addGram state f) gram --revisar
+      maybe (return state) (addGram state name) gram 
 
-{-}  
-  compilePhrase :: St -> String -> IO St
-  compilePhrase state x =
-    do
-      x' <- parseIO "<interactive>" stmt_parse x
-      maybe (return state) (handleStmt state) x'
--}
-
-{-}
-  printPhrase   :: String -> IO ()
-  printPhrase x =
-    do
-      x' <- parseIO "<interactive>" stmt_parse x
-      maybe (return ()) (printStmt . fmap (\y -> (y, conversion y)) ) x'
--}
+  recompileFile :: St -> String -> String -> IO St
+  recompileFile state@(S {..}) f name = do
+      putStrLn ("Abriendo "++f++"...")
+      let f'= reverse(dropWhile isSpace (reverse f))
+      x     <- catch (readFile f')
+                 (\e -> do let err = show (e :: IOException)
+                           hPutStr stderr ("No se pudo abrir el archivo " ++ f' ++ ": " ++ err ++"\n")
+                           return "")
+      gram <- parseIO f' (gram_parse) x
+      maybe (return state) (changeGram state name) gram
 
   printGrammar ::  Gram -> IO ()
   printGrammar gram =  
@@ -184,31 +194,27 @@ module Main where
                        Ok r      -> return (Just r)
 
 
-{-}
-  handleStmt :: St -> Stmt LamTerm -> IO St
-  handleStmt state stmt =
-    do
-      case stmt of
-          Def x e    -> checkType x (conversion e)
-          Eval e     -> checkType it (conversion e)
-    where
-      checkType i t = do
-        case infer (ve state) t of
-          Left err -> putStrLn ("Error de tipos: " ++ err) >> return state
-          Right ty -> checkEval i t ty
-      checkEval i t ty = do
-         let v = eval (ve state) t
-         _ <- when (inter state) $ do
-                  let outtext = if i == it then render (printTerm (quote v))
-                                           else render (text i)
-                  putStrLn outtext
-         return (state { ve = (Global i, (v, ty)) : ve state})
--}
 
   addGram :: St -> String -> GramTerm -> IO St
   addGram state name gram =
     do let gram' = gramTermToGram gram
         in return (S ((name, gram'):(env state)))
+
+  changeGram :: St -> String -> GramTerm -> IO St
+  changeGram state name gram =
+    do let gram' = gramTermToGram gram
+        in return (S (replace name gram' (env state)))
+
+  replace :: String -> Gram -> NameEnv -> NameEnv
+  replace name gram [] = [(name, gram)]
+  replace name gram ((n,g):xs) = if name==n then ((n,gram):xs)
+                                            else ((n,g):(replace name gram xs))
+
+  compilePhrase :: St -> String -> IO St
+  compilePhrase s x = do x' <- parseIO "<interactive>" stmt_parse x
+                         maybe (return state) (handleStmt state) x'
+
+  
 
   prelude :: String
   prelude = "Prelude.lam"

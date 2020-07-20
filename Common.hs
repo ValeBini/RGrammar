@@ -46,3 +46,13 @@ data NFA a = NA [NSym] [State a] (R a) [State a] (State a)
 type Name = String
 
 type NameEnv = [(Name, Gram)]
+
+data Stmt = Grammar
+          | Def Name Grammar
+          | Eq Grammar Grammar
+          
+data Grammar = Gram
+             | Union Grammar Grammar
+             | Inter Grammar Grammar
+             | Rever Grammar Grammar 
+             | Concat Grammar Grammar

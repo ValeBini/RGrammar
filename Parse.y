@@ -5,7 +5,8 @@ import Data.Char
 }
 
 %monad { P } { thenP } { returnP }
-%name parse Gram
+%name parse_Gram Gram
+%name parse_Stmt Stmt
 
 %tokentype { Token }
 %lexer {lexer} {TEOF}
