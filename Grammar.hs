@@ -1,224 +1,194 @@
 module Grammar (
-    gramTermToGram,
-    gramToNFA,
-    nfaToDFA,
-    minimizeDFA
+    gramTermToDFA,
+    dfaToLGram,
+    dfaToRGram
     )
     where
 
-import Data.Set (fromList, isSubsetOf, intersection, empty)
-import Data.List (union ,(\\), delete, elemIndex)
+import Data.Set (fromList, fold, isSubsetOf, intersection, empty, toAscList, toList, unions, Set) 
+import qualified Data.Set as S (map, union)
+import Data.List (union, (\\), delete, elemIndex, intersect)
+import Data.Lists (unionOf)
 import Common
+import FA
+import Prelude hiding (LT)
 
 
-gramTermToGram :: GramTerm -> Gram
-gramTermToGram (GProd p ps) = case ps of
-                                GProd r rs -> let G nts ts prods sigma = gramTermToGram (GProd r rs)
-                                              in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
-                                GRule l r -> let prods = gramTermToProd ps
-                                                 (ts, nts) = tntFromProd prods
-                                              in G (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
-        where prods' = gramTermToProd p
-              (ts', nts') = tntFromProd prods'
-              tntFromProd [] = ([],[])
-              tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
-                                    in case r of
-                                        PT nt t -> (union [t] t', union [nt] nt')
-                                        PN nt0 t nt1 -> (union [t] t', union [nt0,nt1] nt')
-                                        PE nt -> (t', union [nt] nt')
 
-              
-gramTermToProd :: GramTerm -> [Prod]
-gramTermToProd (GRule (GNT l) (GOr r rs)) = case r of
-                                              GEmpty -> (PE (NT l)):(gramTermToProd (GRule (GNT l) rs))
-                                              Common.GT t -> (PT (NT l) (T t)):(gramTermToProd (GRule (GNT l) rs))
-                                              GTNT t nt -> (PN (NT l) (T t) (NT nt)):(gramTermToProd (GRule (GNT l) rs))
-gramTermToProd (GRule GSigma (GOr r rs)) = case r of
-                                            GEmpty -> (PE (NT "&")):(gramTermToProd (GRule GSigma rs))
-                                            Common.GT t -> (PT (NT "&") (T t)):(gramTermToProd (GRule GSigma rs))
-                                            GTNT t nt -> (PN (NT "&") (T t) (NT nt)):(gramTermToProd (GRule GSigma rs))
-gramTermToProd (GRule (GNT l) r) =  case r of
-                                      GEmpty -> [PE (NT l)]
-                                      Common.GT t -> [PT (NT l) (T t)]
-                                      GTNT t nt -> [PN (NT l) (T t) (NT nt)]
-gramTermToProd (GRule GSigma r) = case r of
-                                    GEmpty -> [PE (NT "&")]
-                                    Common.GT t -> [PT (NT "&") (T t)]
-                                    GTNT t nt -> [PN (NT "&") (T t) (NT nt)]
+----------------------------------------------------------
+-------- FUNCIONES PARA CONVERTIR GramTerm A Gram --------
+----------------------------------------------------------
 
-gramToNFA :: Gram -> NFA (Maybe String)
-gramToNFA (G nts ts ps nt) = NA syms states r ac i
+-- Transforma un RGramTerm en una RGram
+-- A partir del RGramTerm define cuáles son los conjuntos de No Terminales, Terminales, 
+-- Reglas de Producción y NT Inicial
+rgramTermToGram :: RGramTerm -> RGram
+rgramTermToGram (RProd p ps) = let RG nts ts prods _ = rgramTermToGram ps
+                                   RG nts' ts' prods' _ = rgramTermToGram p
+                               in RG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+rgramTermToGram gt@(RRule l r) = let prods = rgramTermToProd gt
+                                     (ts, nts) = tntFromProd prods
+                                 in RG nts ts prods (NT "&")
+    where tntFromProd [] = ([],[])
+          tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
+                               in case r of
+                                    RPT nt t -> (union [t] t', union [nt] nt')
+                                    RPN nt0 t nt1 -> (union [t] t', union [nt0,nt1] nt')
+                                    RPE nt -> (t', union [nt] nt')
+
+-- Transforma un RGramTerm que corresponde a un conjunto de Reglas de Producción derechas
+-- de un mismo NT separadas por '|' y las transforma en una lista de RProd 
+rgramTermToProd :: RGramTerm -> [RProd]
+rgramTermToProd (RRule (RNT l) (ROr r rs)) = (convertR (NT l) r):(rgramTermToProd (RRule (RNT l) rs))
+rgramTermToProd (RRule RSigma (ROr r rs)) = (convertR (NT "&") r):(rgramTermToProd (RRule RSigma rs))
+rgramTermToProd (RRule (RNT l) r) =  [convertR (NT l) r]
+rgramTermToProd (RRule RSigma r) = [convertR (NT "&") r]
+
+-- Toma un NT y un RGramTerm que corresponde a un lado derecho de una Regla de 
+-- Producción derecha y devuelve la RProd correspondiente
+convertR :: NT -> RGramTerm -> RProd
+convertR nt REmpty = RPE nt 
+convertR nt (RT t) = RPT nt (T t)
+convertR nt (RTNT t nt') = RPN nt (T t) (NT nt')
+convertR nt (RTSigma t) = RPN nt (T t) (NT "&")
+
+-- Idem rgramTermToGram para gramáticas izquierdas
+lgramTermToGram :: LGramTerm -> LGram
+lgramTermToGram (LProd p ps) = let LG nts ts prods _ = lgramTermToGram ps
+                                   LG nts' ts' prods' _ = lgramTermToGram p
+                               in LG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+lgramTermToGram gt@(LRule l r) = let prods = lgramTermToProd gt
+                                     (ts, nts) = tntFromProd prods
+                                 in LG nts ts prods (NT "&")
+    where tntFromProd [] = ([],[])
+          tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
+                               in case r of
+                                    LPT nt t -> (union [t] t', union [nt] nt')
+                                    LPN nt0 nt1 t -> (union [t] t', union [nt0,nt1] nt')
+                                    LPE nt -> (t', union [nt] nt')
+
+-- Idem rgramTermToProd para Reglas de Producción izquierdas
+lgramTermToProd :: LGramTerm -> [LProd]
+lgramTermToProd (LRule (LNT l) (LOr r rs)) = (convertL (NT l) r):(lgramTermToProd (LRule (LNT l) rs))
+lgramTermToProd (LRule LSigma (LOr r rs)) = (convertL (NT "&") r):(lgramTermToProd (LRule LSigma rs))
+lgramTermToProd (LRule (LNT l) r) =  [convertL (NT l) r]
+lgramTermToProd (LRule LSigma r) = [convertL (NT "&") r]
+
+-- Idem convertR para Reglas de Producción izquierdas
+convertL :: NT -> LGramTerm -> LProd
+convertL nt LEmpty = LPE nt
+convertL nt (LT t) = LPT nt (T t)
+convertL nt (LNTT nt' t) = LPN nt (NT nt') (T t)
+convertL nt (LSigmaT t) = LPN nt (NT "&") (T t)
+
+-- Toma un GramTerm y según si es derecha o izquierda usa 
+-- rgramTermToGram o lgramTermToGram
+gramTermToGram :: GramTerm -> Gram 
+gramTermToGram (Left gram) = Left (lgramTermToGram gram)
+gramTermToGram (Right gram) = Right (rgramTermToGram gram)
+
+
+----------------------------------------------------------
+------- FUNCIONES PARA CONVERTIR Gramáticas A NFA --------
+----------------------------------------------------------
+
+-- Toma una gramática derecha y devuelve un NFA equivalente (cuyos estados son Int)
+rgramToNFA :: RGram -> NFA (Maybe String)
+rgramToNFA (RG nts ts ps nt) = NA syms states r ac i
   where syms = map (\t -> NSym (Just (runT t))) ts
         states = ((State Nothing):(map (\nt -> State (Just (runNT nt))) nts))
-        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (PN s x b) ps]
-                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (PT s x) ps])
-        ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (PE s) ps]
+        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (RPN s x b) ps]
+                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (RPT s x) ps])
+        ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (RPE s) ps]
         i = (State (Just (runNT nt)))
 
-{-}
-included :: [State [Maybe String]] -> [State [Maybe String]] -> Bool
-included xs ys = let xs' = map (\x -> fromList (runState x)) xs
-                     ys' = map (\y -> fromList (runState y)) ys
-                 in isSubsetOf (fromList xs') (fromList ys')
--}
-
-included :: R [Maybe String] -> R [Maybe String] -> Bool
-included (R xs) (R ys) = let xs' = map (\(s1, s, s2) -> (fromList (runState s1), s, fromList (runState s2))) xs
-                             ys' = map (\(s1, s, s2) -> (fromList (runState s1), s, fromList (runState s2))) ys
-                         in isSubsetOf (fromList xs') (fromList ys')
-
-equal :: [State [Maybe String]] -> [State [Maybe String]] -> Bool
-equal xs ys = let xs' = map (\x -> fromList (runState x)) xs
-                  ys' = map (\y -> fromList (runState y)) ys
-              in (fromList xs') == (fromList ys')
+-- Toma una gramática izquierda y devuelve un NFA equivalente (cuyos estados son Int)
+-- Para hacer esto lo transformamos como si fuera una gramática derecha y luego hacemos
+-- reverse del NFA obtenido.
+lgramToNFA :: LGram -> NFA (Maybe (Maybe String)) 
+lgramToNFA (LG nts ts ps nt) = nfaReverse (NA syms states r ac i)
+  where syms = map (\t -> NSym (Just (runT t))) ts
+        states = ((State Nothing):(map (\nt -> State (Just (runNT nt))) nts))
+        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (LPN s b x) ps]
+                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (LPT s x) ps])
+        ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (LPE s) ps]
+        i = (State (Just (runNT nt)))
 
 
-dfaF' :: [NSym] -> R (Maybe String) -> [State (Maybe String)] -> R [Maybe String] -> R [Maybe String] -> R [Maybe String]
-dfaF' xs (R rs) sts (R fall) (R flast) = let f = concat (map (\(s1, x1, s1') -> map (\x -> (s1', x, t s1' x)) xs) flast)
-                                         in if included (R f) (R fall) then (R fall) else (dfaF' xs (R rs) sts (R (union fall f)) (R f))
-         where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
 
-dfaF :: [NSym] -> R (Maybe String) -> [State (Maybe String)] -> State [Maybe String] -> R [Maybe String]
-dfaF xs (R rs) sts i = let f = map (\x -> (i, x, t i x)) xs
-                       in dfaF' xs (R rs) sts (R f) (R f)
-        where t st x = State (concat (map (\s -> [runState s' | s'<-sts, elem (State s, x, s') rs]) (runState st)))
+----------------------------------------------------------
+-------- FUNCION PARA CONVERTIR GramTerm EN DFA ----------         
+----------------------------------------------------------
 
-nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
-nfaToDFA (NA xs st (R rs) ac i) = DA xs' st' (F f) ac' i'
-    where xs' = concat (map (\(NSym x) -> case x of
-                                            Just s -> [DSym s]
-                                            Nothing -> []) xs)
-          i' = State (union [runState i] [runState s | s<-st, elem (i, NSym Nothing, s) rs])
-          f = map (\(s0,NSym (Just x),s1) -> (s0,DSym x,s1)) f'
-          R f' = (dfaF xs (R rs) st i')
-          st' = union (map (\(a,b,c)->a) f) (map (\(a,b,c)->c) f)
-          ac' = [s | s<-st', (intersection (fromList (runState s)) (fromList (map runState ac))) /= empty]
+-- Función que toma una gramática izquierda, la transforma en NFA,
+-- luego en DFA y, por último, la renombra a Int.
+lgramToDFA :: LGram -> DFA Int
+lgramToDFA lg = dfaStandar (nfaToDFA (lgramToNFA lg))
 
+-- Idem lgramToDFA pero para gramáticas derechas.
+rgramToDFA :: RGram -> DFA Int
+rgramToDFA rg = dfaStandar (nfaToDFA (rgramToNFA rg))
 
-nextPartition :: [State [Maybe String]] -> [[State [Maybe String]]] -> [DSym] -> F [Maybe String] -> [[State [Maybe String]]]
-nextPartition sts last xs (F f) = concat (map (partition []) last)
-    where partition new [] = new
-          partition [] (s:ss) = partition [[s]] ss
-          partition (p:ps) (s:ss) = if distinguishable (head p) s then partition (p:(partition ps [s])) ss
-                                                                  else partition ((s:p):ps) ss
-          distinguishable s1 s2 = or (map (\x -> (numOfPart [s | s<-sts, elem (s1,x,s) f] last 0) /= (numOfPart [s | s<-sts, elem (s2,x,s) f] last 0)) xs)
-          numOfPart [s] [] i = -1
-          numOfPart [s] (p:ps) i = if (elem s p) then i 
-                                                 else numOfPart [s] ps (i+1)
-
-minimumStates :: [DSym] -> [State [Maybe String]] -> [[State [Maybe String]]] -> F [Maybe String] -> [State [[Maybe String]]]
-minimumStates xs sts p (F f) = let nextp = nextPartition sts p xs (F f)
-                               in if p == nextp then (map (\ss -> State ((map runState ss))) p)
-                                             else minimumStates xs sts nextp (F f)
-
-minimizeDFA :: DFA [Maybe String] -> DFA [[Maybe String]]
-minimizeDFA (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
-    where st' = minimumStates xs st [ac, st \\ ac] (F f)
-          f' = [(s0, x, s1) | s0<-st', x<-xs, s1<-st', connect s0 x s1]
-          connect s0 x s1 = or (concat (map (\ss0-> (map (\ss1-> elem (State ss0, x, State ss1) f) (runState s1))) (runState s0)))
-          ac' = [s | s<-st', [ss | ss<-ac, elem (runState ss) (runState s)] /= []]
-          i' = let [s] = [s | s<-st', elem (runState i) (runState s)] in s
-
-          
-complementDFA :: Eq a => DFA a -> DFA a
-complementDFA (DA xs st (F f) ac i) = DA xs st (F f) (st \\ ac) i
-          
---asumo que tienen el mismo alfabeto
-dfaIntersection :: (Eq a, Eq b) => DFA a -> DFA b -> DFA (a,b)
-dfaIntersection (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) =
-    DA xs st (F f) ac i
-    where xs = xs0
-          st = union (union [s | s <- map first f] [s | s <- map third f]) [i]
-          f = [(State (s0,s1), x, State (s0',s1')) | x<-xs, (State s0)<-st0, (State s0')<-st0,
-                                                     (State s1)<-st1, (State s1')<-st1, 
-                                                     elem (State s0, x, State s0') f0,
-                                                     elem (State s1, x, State s1') f1]
-          ac = [State (s0,s1) | (State (s0,s1))<-st, elem (State s0) ac0, elem (State s1) ac1]
-          i = State (runState i0, runState i1)
-          first (a,b,c) = a
-          third (a,b,c) = c
-
-dfaUnion :: (Eq a, Eq b) => DFA a -> DFA b -> DFA (a,b)
-dfaUnion (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) = DA xs st (F f) ac i
-    where xs = xs0
-          st = union (union [s | s <- map first f] [s | s <- map third f]) [i]
-          f = [(State (s0,s1), x, State (s0',s1')) | x<-xs, (State s0)<-st0, (State s0')<-st0,
-                                                     (State s1)<-st1, (State s1')<-st1, 
-                                                     elem (State s0, x, State s0') f0,
-                                                     elem (State s1, x, State s1') f1]
-          ac = [State (s0,s1) | (State (s0,s1))<-st, (elem (State s0) ac0) || (elem (State s1) ac1)]
-          i = State (runState i0, runState i1)
-          first (a,b,c) = a
-          third (a,b,c) = c
+-- Función que toma un GramTerm y lo transforma en DFA Int.
+-- Usaremos esta función para transformar la gramática recién
+-- parseada en el DFA que almacenaremos.
+gramTermToDFA :: GramTerm -> DFA Int
+gramTermToDFA g = either lgramToDFA rgramToDFA (gramTermToGram g)
 
 
-nfaRename :: Eq a => NFA a -> Int -> NFA Int
-nfaRename (NA xs st (R r) ac i) n = NA xs st' (R r') ac' i'
-    where st' = let l = n + (length st) - 1
-                in map (\x -> State x) (drop n [0 .. l])
-          r' = map (\(s0, x, s1) -> (rename s0, x, rename s1)) r
-          ac' = map rename ac
-          i' = rename i
-          rename (State s) = let (Just pos) = elemIndex (State s) st
-                             in State (n+pos)
+----------------------------------------------------------
+---------- FUNCIONES PARA VOLVER DE DFA A Gram -----------
+----------------------------------------------------------
 
-nfaConcatenation :: (Eq a, Eq b) => NFA a -> NFA b -> NFA Int
-nfaConcatenation nfa0 nfa1 =
-    let (NA xs0 st0 (R r0) ac0 i0) = nfaRename nfa0 0
-        (NA xs1 st1 (R r1) ac1 i1) = nfaRename nfa1 (length st0)
-        transitions = [(s0, NSym Nothing, i1) | s0 <- ac0]
-        r = r0 ++ r1 ++ transitions
-    in NA xs0 (st0 ++ st1) (R r) ac1 i0
-
-nfaReverse :: NFA a -> NFA (Maybe a)
-nfaReverse (NA xs st (R r) ac i) = NA xs st' (R r') ac' i'
-    where st' = (State Nothing) : (map (\(State s) -> State (Just s)) st)
-          r' = r0 ++ r1
-          r0 = (map (\(State s0, x, State s1) -> (State (Just s1), x, State (Just s0))) r) 
-          r1 = [(State Nothing, NSym Nothing, State (Just s)) | (State s) <- ac]
-          ac' = [State (Just (runState i))]
-          i' = State Nothing
-
-emptyLanguage :: (Eq a, Ord a) => DFA a -> Bool
-emptyLanguage dfa@(DA xs st (F f) ac i) = let rs = reachedStates dfa [i]
-                                          in rs \\ ac == rs
-
-reachedStates :: (Eq a, Ord a) => DFA a -> [State a] -> [State a]
-reachedStates dfa@(DA xs st (F f) ac i) rs = let old = fromList rs
-                                                 new = fromList newStates
-                                             in if isSubsetOf new old then rs
-                                                                      else reachedStates dfa (union rs newStates)
-    where newStates = concat (map (\s -> map (\x -> ff s x) xs) rs)
-          ff s x = ff' s x f
-          ff' s x ((s0,x0,s1):ss) = if s==s0 && x==x0 then s1
-                                                      else ff' s x ss 
+-- Toma un DFA minimal y elimina los estados estancados, es decir, de los
+-- que no se puede salir y no son de aceptación.
+-- Obs: el resultado de esta operación no será un DFA teóricamente. 
+-- Se usará solo para transformarlo a gramática.
+minDfaClean :: Eq a => DFA a -> DFA a
+minDfaClean dfa@(DA xs st (F f) ac i) = DA xs st' (F f') ac i
+    where st' = union exitStates ac 
+          exitStates = [s | s<-st, length (inmediateSt s) > 1]
+          inmediateSt s = union [s] [s' | s'<-st, elem (s,s') trans]
+          trans = map (\(s0,x,s1) -> (s0,s1)) f
+          f' = [(s0,x,s1) | (s0,x,s1)<-f, elem s0 st', elem s1 st']
 
 
-eqGrammar :: Gram -> Gram -> Bool
-eqGrammar g0@(G nt0 t0 p0 i0) g1@(G nt1 t1 p1 i1) = if t0 == t1 then checkEq 
-                                                                else False
-    where checkEq = let dfa0 = (minimizeDFA (nfaToDFA (gramToNFA g0)))
-                        dfa1 = (minimizeDFA (nfaToDFA (gramToNFA g1)))
-                        l0 = dfaIntersection (complementDFA dfa0) dfa1
-                        l1 = dfaIntersection (complementDFA dfa1) dfa0
-                        in (emptyLanguage l0) && (emptyLanguage l1)
+-- Esta función devuelve una lista de NT posibles empezando 
+-- por '&' (sigma) y siguiendo por el alfabeto. Consideramos
+-- que no se necesitan mas de 27 NT.
+ntsList :: Int -> [NT]
+ntsList n = let intList = [0 .. (n-1)]
+                stList = map (\i -> NT (show i)) intList
+            in (NT "&"):stList
 
-ntsList :: [NT]
-ntsList = map (\s -> NT [s]) ('&' : ['A' .. 'Z'])
-
-dfaToGram :: Eq a => DFA a -> Gram
-dfaToGram dfa@(DA xs st (F f) ac i) = G nts ts ps nt
-    where nts = let l = length st
-                in take l ntsList
+-- Convierte un DFA en una gramática derecha para luego poder
+-- imprimirla en pantalla.
+dfaToRGram :: (Eq a, Ord a) => DFA a -> Gram
+dfaToRGram dfa = Right (RG nts ts ps nt)
+    where DA xs st (F f) ac i = minDfaClean (minimizeDFA dfa)
+          nts = let l = length st
+                in ntsList l
           ts = map (\x -> T (runDSym x)) xs
           ps = (map fToProd f) ++ finalprods
           nt = NT "&"
           fToProd (s0,DSym x,s1) = let nt0 = findNT s0
                                        nt1 = findNT s1
-                                    in PN nt0 (T x) nt1
-          finalprods = map (\s -> PE (findNT s)) ac
-          findNT s = let Just i = elemIndex s st'
-                     in nts !! i
+                                    in RPN nt0 (T x) nt1
+          finalprods = map (\s -> RPE (findNT s)) ac
+          findNT s = let Just p = elemIndex s st'
+                     in nts !! p
           st' = i:(delete i st)
-          
 
+-- Convierte un DFA en una gramática izquierda para poder
+-- impimirla en pantalla. Para esto, hace el reverse del
+-- DFA, luego lo convierte a una gramática derecha, y 
+-- finalmente invierte las reglas para que sean izquierdas.
+dfaToLGram :: (Eq a, Ord a) => DFA a -> Gram 
+dfaToLGram dfa = Left (LG nts ts ps nt)
+    where Right (RG nts ts rps nt) = dfaToRGram (dfaReverse dfa)
+          ps = map invertProds rps
+          invertProds p = case p of
+                               RPT nt t -> LPT nt t
+                               RPN nt0 t nt1 -> LPN nt0 nt1 t
+                               RPE nt -> LPE nt  
+               

@@ -2,10 +2,12 @@
 module Parse where
 import Common
 import Data.Char
+import Prelude hiding (LT)
 }
 
 %monad { P } { thenP } { returnP }
-%name parse_Gram Gram
+%name parse_lGram LGram
+%name parse_rGram RGram
 %name parse_Stmt Stmt
 
 %tokentype { Token }
@@ -19,6 +21,8 @@ import Data.Char
     ';'     { TEnd }
     '{'     { TOpen }
     '}'     { TClose }
+    '('     { TO }
+    ')'     { TC }
     T       { TT $$ }
     NT      { TNT $$ }
     '='     { TDef }
@@ -26,14 +30,16 @@ import Data.Char
     '+'     { TUnion }
     '!'     { TIntersec }
     '~'     { TReverse }
-    '^'     { TConcat }
+    '.'     { TConcat }
+    '-'     { TComplem }
 
 %left '=='
 %left '='
 %left '+' 
 %left '!'
-%left '^'
+%left '.'
 %nonassoc '~'
+%nonassoc '-'
 %nonassoc '{' '}'
 %nonassoc '->'
 %nonassoc ';'
@@ -43,32 +49,52 @@ import Data.Char
 
 %%
 
-LeftSide    :  NT                          { GNT $1 }
-            |  '&'                         { GSigma }
+RLeftSide    :  NT                            { RNT $1 }
+             |  '&'                           { RSigma }
 
-Right       :  T                           { Common.GT $1 }
-            |  T NT                        { GTNT $1 $2 }
-            |  T '&'                       { GTSigma $1 }
-            |  '\\'                        { GEmpty }
+LLeftSide    :  NT                            { LNT $1 }
+             |  '&'                           { LSigma }
+ 
+RRight       :  T                             { RT $1 }
+             |  T NT                          { RTNT $1 $2 }
+             |  T '&'                         { RTSigma $1 }
+             |  '\\'                          { REmpty }
 
-RightSide   : Right '|' RightSide          { GOr $1 $3 }
-            | Right                        { $1 }
+LRight       :  T                             { LT $1 }
+             |  NT T                          { LNTT $1 $2 }
+             |  '&' T                         { LSigmaT $2 }
+             |  '\\'                          { LEmpty }
 
-Rule        : LeftSide '->' RightSide      { GRule $1 $3 }
+RRightSide   : RRight '|' RRightSide          { ROr $1 $3 }
+             | RRight                         { $1 }
 
-Prod        : Rule ';' Prod                { GProd $1 $3 }
-            | Rule ';'                     { $1 }
+LRightSide   : LRight '|' LRightSide          { LOr $1 $3 }
+             | LRight                         { $1 }
 
-Gram        : '{' Prod '}'                 { $2 }
+RRule        : RLeftSide '->' RRightSide      { RRule $1 $3 }
 
-Grammar     : NT                           { $1 }
-            | Grammar '+' Grammar          { SUnion $1 $3 }
-            | Grammar '!' Grammar          { SInter $1 $3 }
-            | '~' Grammar                  { SRever $2 }
-            | Grammar '^' Grammar          { SConcat $1 $3}
+LRule        : LLeftSide '->' LRightSide      { LRule $1 $3 }
 
-Stmt        : NT '=' Grammar               { SDef $1 $3 }
-            | Grammar '==' Grammar         { SEq $1 $3 }
+RProd        : RRule ';' RProd                { RProd $1 $3 }
+             | RRule ';'                      { $1 }
+
+LProd        : LRule ';' LProd                { LProd $1 $3 }
+             | LRule ';'                      { $1 }
+
+RGram        : '{' RProd '}'                  { $2 }
+
+LGram        : '{' LProd '}'                  { $2 }
+
+Grammar     : NT                              { SGram $1 }
+            | Grammar '+' Grammar             { SUnion $1 $3 }
+            | Grammar '!' Grammar             { SInter $1 $3 }
+            | Grammar '~'                     { SRever $1 }
+            | Grammar '.' Grammar             { SConcat $1 $3}
+            | '-' Grammar                     { SComp $2 }
+            | '(' Grammar ')'                 { $2 }
+
+Stmt        : NT '=' Grammar                  { SDef $1 $3 }
+            | Grammar '==' Grammar            { SEq $1 $3 }
 
 {
 
@@ -110,12 +136,15 @@ data Token = TArrow
                 | TEOF
                 | TOpen
                 | TClose
+                | TO
+                | TC
                 | TDef
                 | TEq
                 | TUnion
                 | TIntersec
                 | TReverse
                 | TConcat
+                | TComplem
                deriving Show
 
 ----------------------------------
@@ -125,7 +154,7 @@ lexer cont s = case s of
                     ('\n':s)  ->  \line -> lexer cont s (line + 1)
                     (c:cs)
                           | isSpace c -> lexer cont cs
-                          | isAlpha c -> lexNT (c:cs)
+                          | isAlphaNum c -> lexNT (c:cs)
                     ('-':('-':cs)) -> lexer cont $ dropWhile ((/=) '\n') cs
                     ('{':('-':cs)) -> consumirBK 0 0 cont cs
       	            ('-':('}':cs)) -> \ line -> Failed $ "Línea "++(show line)++": Comentario no abierto"
@@ -137,14 +166,17 @@ lexer cont s = case s of
                     ('"':cs) -> lexT cs
                     ('{':cs) -> cont TOpen cs
                     ('}':cs) -> cont TClose cs
+                    ('(':cs) -> cont TO cs
+                    (')':cs) -> cont TC cs
                     ('=':('=':cs)) -> cont TEq cs
                     ('=':cs) -> cont TDef cs
                     ('+':cs) -> cont TUnion cs
                     ('!':cs) -> cont TIntersec cs
                     ('~':cs) -> cont TReverse cs
-                    ('^':cs) -> cont TConcat cs
+                    ('.':cs) -> cont TConcat cs
+                    ('-':cs) -> cont TComplem cs
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
-                    where lexNT cs = let (nt, rest) = span isAlpha cs 
+                    where lexNT cs = let (nt, rest) = span isAlphaNum cs 
                                         in cont (TNT nt) rest
                           lexT cs = let (t, rest) = span (/= '"') cs
                                         in cont (TT t) (tail rest)
@@ -157,6 +189,7 @@ lexer cont s = case s of
                                                               ('\n':cs) -> consumirBK anidado (cl+1) cont cs
                                                               (_:cs) -> consumirBK anidado cl cont cs
 
-gram_parse s = parse_Gram s 1
+lgram_parse s = parse_lGram s 1
+rgram_parse s = parse_rGram s 1
 stmt_parse s = parse_Stmt s 1
 }

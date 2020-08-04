@@ -2,8 +2,6 @@
 module Main where
 
   import Control.Exception (catch,IOException)
-  import Control.Monad.Except
---  import Control.Monad.Error 
   import Data.Char
   import Data.List
   import Data.Maybe
@@ -15,8 +13,10 @@ module Main where
 
   import Common
   import Grammar
+  import Eval
   import Parse
   import PrettyPrinter
+  
 ---------------------
 --- Interpreter
 ---------------------
@@ -33,8 +33,8 @@ module Main where
   iprompt = "RG> "
 
 
-  data St = S { env :: NameEnv  -- Entorno con las gramáticas cargadas
-                 }
+  data St = S { env :: Env } -- Entorno con las gramáticas cargadas, se guardan como DFAs
+                 
 
   --  read-eval-print loop
   readevalprint :: [String] -> St -> IO ()
@@ -55,15 +55,14 @@ module Main where
                   maybe (return ()) rec st'
     in
       do
-        state' <- compileFiles args state 
         putStrLn ("Intérprete de " ++ iname ++ ".\n" ++
                   "Escriba :? para recibir ayuda.")
-        --  enter loop
-        rec state' 
+        rec state 
 
-  data Command = Compile String
-               | Print String
-               | Recompile String 
+  data Command = RCompile String
+               | LCompile String
+               | RPrint String
+               | LPrint String
                | Browse
                | Quit
                | Help
@@ -98,11 +97,11 @@ module Main where
               in if isPrefixOf "marg." r then (Just (reverse (drop 5 r)))
                                          else Nothing
 
--- dado un nombre y un estado del entorno busca la gramatica correspondiente al nombre
-  lookfor :: String -> St -> Maybe Gram
-  lookfor s (S []) = Nothing 
-  lookfor s (S ((name,gram):xs)) = if name == s then Just gram
-                                                else lookfor s (S xs)
+-- toma un string y devuelve el dfa asociado a ese nombre
+  lookforDFA :: Name -> Env -> Maybe GDFA 
+  lookforDFA n [] = Nothing
+  lookforDFA n ((name, dfa):xs) | n == name = Just dfa
+                                | n /= name = lookforDFA n xs
 
   handleCommand :: St -> Command -> IO (Maybe St)
   handleCommand state@(S {..}) cmd
@@ -112,24 +111,26 @@ module Main where
          Help       ->  putStr (helpTxt commands) >> return (Just state)
          Browse     ->  do  putStr (unlines [ s | s <- reverse (nub (map fst env)) ])
                             return (Just state)
-         Compile c  ->  let name = getName c
-                        in case name of
-                          Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
-                          Just s -> let g = lookfor s state
-                                    in case g of
-                                         Nothing -> do state' <- compileFile state c s
-                                                       return (Just state')
-                                         Just g' -> putStrLn "La gramatica ya existe" >> return (Just state)
-         Print s    ->  let g = lookfor s state
-                          in case g of
-                              Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
-                              Just g' -> printGrammar g' >> return (Just state)
-         Recompile c  -> let name = getName c
+         RCompile c  ->  let name = getName c
                          in case name of
-                             Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
-                             Just s -> do state' <- recompileFile state c s
-                                          return (Just state') 
-         InteractiveStmt s -> compilePhrase state s
+                           Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                           Just s -> do state' <- compileFile state c s True
+                                        return (Just state')
+         LCompile c  ->  let name = getName c
+                         in case name of
+                           Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                           Just s -> do state' <- compileFile state c s False
+                                        return (Just state')
+         RPrint s    ->  let g = lookforDFA s env
+                         in case g of
+                              Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
+                              Just g' -> printGrammar g' True >> return (Just state)
+         LPrint s    ->  let g = lookforDFA s env
+                         in case g of
+                              Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
+                              Just g' -> printGrammar g' False >> return (Just state)
+         InteractiveStmt s -> do state' <- compilePhrase state s
+                                 return (Just state')
                
 
   data InteractiveCommand = Cmd [String] String (String -> Command) String
@@ -137,9 +138,10 @@ module Main where
   commands :: [InteractiveCommand]
   commands
     =  [ Cmd [":browse"]      ""        (const Browse) "Ver los nombres en scope",
-         Cmd [":load"]        "<file>"  (Compile)      "Cargar una gramática desde un archivo",
-         Cmd [":print"]       "<gram>"  Print          "Imprime una gramática",    
-         Cmd [":reload"]      "<file>"  (Recompile)    "Volver a cargar un archivo. Si no estaba cargado, cargarlo",
+         Cmd [":rload"]       "<file>"  (RCompile)     "Cargar una gramática derecha desde un archivo. Si ya existe, lo reemplaza",
+         Cmd [":lload"]       "<file>"  (LCompile)     "Cargar una gramática izquierda desde un archivo. Si ya existe, lo reemplaza",
+         Cmd [":rprint"]      "<gram>"  (RPrint)       "Imprime una gramática derecha",
+         Cmd [":lprint"]      "<gram>"  (LPrint)       "Imprime una gramática izquierda",
          Cmd [":quit"]        ""        (const Quit)   "Salir del intérprete",
          Cmd [":help",":?"]   ""        (const Help)   "Mostrar esta lista de comandos" ]
   
@@ -152,41 +154,27 @@ module Main where
                      in   ct ++ replicate ((24 - length ct) `max` 2) ' ' ++ d) cs)
 
 
-  compileFiles :: [String] -> St -> IO St
-  compileFiles [] s      = return s
-  compileFiles (x:xs) s  = let name = getName x
-                           in case name of
-                                Nothing -> putStrLn ("El nombre del archivo " ++ x ++ " no es valido") >> compileFiles xs s
-                                Just n -> do s' <- compileFile s x n
-                                             compileFiles xs s'
-
-
-  compileFile :: St -> String -> String -> IO St
-  compileFile state@(S {..}) f name = do
+  compileFile :: St -> String -> String -> Bool -> IO St
+  compileFile state@(S {..}) f name right = do
       putStrLn ("Abriendo "++f++"...")
       let f'= reverse(dropWhile isSpace (reverse f))
       x     <- catch (readFile f')
                  (\e -> do let err = show (e :: IOException)
                            hPutStr stderr ("No se pudo abrir el archivo " ++ f' ++ ": " ++ err ++"\n")
                            return "")
-      gram <- parseIO f' (gram_parse) x
-      maybe (return state) (addGram state name) gram 
+      gram <- do if right then do rg <- parseIO f' (rgram_parse) x
+                                  return (maybe Nothing (\x -> Just (Right x)) rg)
+                 else do lg <- parseIO f' (lgram_parse) x
+                         return (maybe Nothing (\x -> Just (Left x)) lg) 
+      maybe (return state) (addGram state name) gram
 
-  recompileFile :: St -> String -> String -> IO St
-  recompileFile state@(S {..}) f name = do
-      putStrLn ("Abriendo "++f++"...")
-      let f'= reverse(dropWhile isSpace (reverse f))
-      x     <- catch (readFile f')
-                 (\e -> do let err = show (e :: IOException)
-                           hPutStr stderr ("No se pudo abrir el archivo " ++ f' ++ ": " ++ err ++"\n")
-                           return "")
-      gram <- parseIO f' (gram_parse) x
-      maybe (return state) (changeGram state name) gram
 
-  printGrammar ::  Gram -> IO ()
-  printGrammar gram =  
+
+  printGrammar ::  GDFA -> Bool -> IO ()
+  printGrammar dfa right =  
     do
-      let outtext = printGram gram
+      let outtext = if right then printGram (dfaToRGram dfa)
+                             else printGram (dfaToLGram dfa)
       putStrLn (render outtext)
 
   parseIO :: String -> (String -> ParseResult a) -> String -> IO (Maybe a)
@@ -195,33 +183,32 @@ module Main where
                                        return Nothing
                        Ok r      -> return (Just r)
 
-
-
   addGram :: St -> String -> GramTerm -> IO St
   addGram state name gram =
-    do let gram' = gramTermToGram gram
-        in return (S ((name, gram'):(env state)))
-
-  changeGram :: St -> String -> GramTerm -> IO St
-  changeGram state name gram =
-    do let gram' = gramTermToGram gram
+    do let gram' = gramTermToDFA gram
         in return (S (replace name gram' (env state)))
 
-  replace :: String -> Gram -> NameEnv -> NameEnv
+  replace :: String -> GDFA -> Env -> Env
   replace name gram [] = [(name, gram)]
   replace name gram ((n,g):xs) = if name==n then ((n,gram):xs)
                                             else ((n,g):(replace name gram xs))
 
   compilePhrase :: St -> String -> IO St
-  compilePhrase s x = do x' <- parseIO "<interactive>" stmt_parse x
-                         maybe (return state) (handleStmt state) x'
+  compilePhrase state x = do stmt <- parseIO "<interactive>" stmt_parse x
+                             maybe (return state) (handleStmt state) stmt
 
-  
+  handleStmt :: St -> Stmt -> IO St
+  handleStmt state stmt = do case stmt of 
+                                SDef n g -> addDef n g
+                                SEq g0 g1 -> evalIfEq 
+      where 
+        addDef n g = let res = eval (env state) g
+                     in case res of
+                          Left e -> putStrLn e >> return state
+                          Right dfa -> return (S (replace n dfa (env state)))
+        evalIfEq = let res = checkEq (env state) stmt
+                   in case res of 
+                         Left e -> putStrLn e >> return state
+                         Right b -> putStrLn (show b) >> return state 
 
-  prelude :: String
-  prelude = "Prelude.lam"
-
-  it :: String          
-  it = "it"
- 
  

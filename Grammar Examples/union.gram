@@ -1,0 +1,10 @@
+{-
+gramatica para la union de ab y su reversa
+-}
+{
+    & -> "a" A | "c" C | \;
+    A -> "b" B;
+    B -> "a" A | \;
+    C -> "d" D;
+    D -> "c" C | \;
+}

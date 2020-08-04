@@ -1,15 +1,28 @@
 module Common where
 
-data GramTerm = GNT String
-              | GSigma
-              | GT String
-              | GTNT String String
-              | GTSigma String 
-              | GEmpty
-              | GOr GramTerm GramTerm
-              | GRule GramTerm GramTerm
-              | GProd GramTerm GramTerm
+data RGramTerm = RNT String
+               | RSigma
+               | RT String
+               | RTNT String String
+               | RTSigma String 
+               | REmpty
+               | ROr RGramTerm RGramTerm
+               | RRule RGramTerm RGramTerm
+               | RProd RGramTerm RGramTerm
     deriving (Eq, Show)
+
+data LGramTerm = LNT String
+               | LSigma
+               | LT String
+               | LNTT String String
+               | LSigmaT String 
+               | LEmpty
+               | LOr LGramTerm LGramTerm
+               | LRule LGramTerm LGramTerm
+               | LProd LGramTerm LGramTerm
+    deriving (Eq, Show)
+
+type GramTerm = Either LGramTerm RGramTerm
 
 -- terminal
 newtype T = T {runT :: String}
@@ -19,13 +32,24 @@ newtype T = T {runT :: String}
 newtype NT = NT {runNT :: String}
     deriving (Eq, Ord, Show)
 
--- regla de produccion
-data Prod = PT NT T | PN NT T NT | PE NT
+-- regla de produccion derecha
+data RProd = RPT NT T | RPN NT T NT | RPE NT
     deriving (Eq, Ord, Show)
 
--- gramatica
-data Gram = G [NT] [T] [Prod] NT
+-- regla de produccion izquierda
+data LProd = LPT NT T | LPN NT NT T | LPE NT
+    deriving (Eq, Ord, Show)
+
+-- gramatica derecha
+data RGram = RG [NT] [T] [RProd] NT
     deriving Show
+
+-- gramatica derecha
+data LGram = LG [NT] [T] [LProd] NT
+    deriving Show
+
+-- gramatica
+type Gram = Either LGram RGram 
 
 -- simbolos automatas no deterministas
 newtype NSym = NSym {runNSym :: Maybe String} -- el simbolo Nothing es la palabra vacia
@@ -48,6 +72,7 @@ data F a = F [(State a, DSym, State a)]
 
 -- deterministic finite automata
 data DFA a = DA [DSym] [State a] (F a) [State a] (State a)
+    deriving Show
 
 -- non deterministic finite automata
 data NFA a = NA [NSym] [State a] (R a) [State a] (State a)
@@ -56,17 +81,19 @@ data NFA a = NA [NSym] [State a] (R a) [State a] (State a)
 -- nombres
 type Name = String
 
+type GDFA = DFA Int
+
 -- entorno de gramaticas con sus respectivos identificadores
-type NameEnv = [(Name, Gram)]
+type Env = [(Name, GDFA)]
 
 -- un statement es:
-data Stmt = SGrammar            -- un grammar
-          | SDef Name Grammar   -- una asignacion de un grammar aun nombre
-          | SEq Grammar Grammar -- una consulta de equivalencia de dos grammar
+data Stmt = SDef Name SGrammar    -- una asignacion de un grammar aun nombre
+          | SEq SGrammar SGrammar -- una consulta de equivalencia de dos grammar
 
 -- un grammar puede ser:          
-data SGrammar = SGram -- una gramatica simple
-              | SUnion Grammar Grammar  -- la union de dos gramaticas
-              | SInter Grammar Grammar  -- la inteseccion de dos gramaticas
-              | SRever Grammar          -- la reversa de una gramatica
-              | SConcat Grammar Grammar -- la concatenacion de dos gramaticas
+data SGrammar = SGram Name                -- el nombre de una gramática cargada
+              | SUnion SGrammar SGrammar  -- la union de dos gramaticas
+              | SInter SGrammar SGrammar  -- la inteseccion de dos gramaticas
+              | SRever SGrammar           -- la reversa de una gramatica
+              | SConcat SGrammar SGrammar -- la concatenacion de dos gramaticas
+              | SComp SGrammar            -- el complemento de una gramatica
