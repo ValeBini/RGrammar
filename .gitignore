@@ -1,0 +1,6 @@
+# ignore all .o
+*.o
+
+#ignore all .hi
+*.hi
+
