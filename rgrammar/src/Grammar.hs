@@ -8,7 +8,6 @@ module Grammar (
 import Data.Set (fromList, fold, isSubsetOf, intersection, empty, toAscList, toList, unions, Set) 
 import qualified Data.Set as S (map, union)
 import Data.List (union, (\\), delete, elemIndex, intersect)
-import Data.Lists (unionOf)
 import Common
 import FA
 import Prelude hiding (LT)

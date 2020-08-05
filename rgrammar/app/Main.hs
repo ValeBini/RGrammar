@@ -6,10 +6,10 @@ module Main where
   import Data.List
   import Data.Maybe
   import Prelude hiding (print)
-  import System.Console.Readline
+  import System.Console.Readline (readline,addHistory)
   import System.Environment
   import System.IO hiding (print)
-  import Text.PrettyPrint.HughesPJ (render,text)
+  import Text.PrettyPrint.HughesPJ (render)
 
   import Common
   import Grammar
