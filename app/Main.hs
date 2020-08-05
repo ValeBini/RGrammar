@@ -29,7 +29,7 @@ module Main where
   ioExceptionCatcher _ = return Nothing
 
   iname, iprompt :: String
-  iname = "regular grammar"
+  iname = "Regular Grammar"
   iprompt = "RG> "
 
 
@@ -55,8 +55,8 @@ module Main where
                   maybe (return ()) rec st'
     in
       do
-        putStrLn ("Intérprete de " ++ iname ++ ".\n" ++
-                  "Escriba :? para recibir ayuda.")
+        putStrLn (iname ++ " interpreter.\n" ++
+                  "Enter :? to receive help.")
         rec state 
 
   data Command = RCompile String
@@ -78,13 +78,13 @@ module Main where
              --  find matching commands
              let  matching  =  filter (\ (Cmd cs _ _ _) -> any (isPrefixOf cmd) cs) commands
              case matching of
-               []  ->  do  putStrLn ("Comando desconocido `" ++ 
+               []  ->  do  putStrLn ("Unknown command `" ++ 
                                      cmd                     ++ 
-                                     "'. Escriba :? para recibir ayuda.")
+                                     "'. Enter :? to receive help.")
                            return Noop
                [Cmd _ _ f _]
                    ->  do  return (f t)
-               _   ->  do  putStrLn ("Comando ambigüo, podría ser " ++ 
+               _   ->  do  putStrLn ("Ambiguous command, it could be " ++ 
                                      concat (intersperse ", " [ head cs | Cmd cs _ _ _ <- matching ]) ++ ".")
                            return Noop
                                                         
@@ -113,21 +113,21 @@ module Main where
                             return (Just state)
          RCompile c  ->  let name = getName c
                          in case name of
-                           Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                           Nothing -> putStrLn "Invalid filename" >> return (Just state)
                            Just s -> do state' <- compileFile state c s True
                                         return (Just state')
          LCompile c  ->  let name = getName c
                          in case name of
-                           Nothing -> putStrLn "El nombre del archivo no es valido" >> return (Just state)
+                           Nothing -> putStrLn "Invalid filename" >> return (Just state)
                            Just s -> do state' <- compileFile state c s False
                                         return (Just state')
          RPrint s    ->  let g = lookforDFA s env
                          in case g of
-                              Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
+                              Nothing -> putStr "Grammar not found\n" >> return (Just state)
                               Just g' -> printGrammar g' True >> return (Just state)
          LPrint s    ->  let g = lookforDFA s env
                          in case g of
-                              Nothing -> putStr "La gramática no esta cargada\n" >> return (Just state)
+                              Nothing -> putStr "Grammar not found\n" >> return (Just state)
                               Just g' -> printGrammar g' False >> return (Just state)
          InteractiveStmt s -> do state' <- compilePhrase state s
                                  return (Just state')
@@ -137,30 +137,30 @@ module Main where
 
   commands :: [InteractiveCommand]
   commands
-    =  [ Cmd [":browse"]      ""        (const Browse) "Ver los nombres en scope",
-         Cmd [":rload"]       "<file>"  (RCompile)     "Cargar una gramática derecha desde un archivo. Si ya existe, lo reemplaza",
-         Cmd [":lload"]       "<file>"  (LCompile)     "Cargar una gramática izquierda desde un archivo. Si ya existe, lo reemplaza",
-         Cmd [":rprint"]      "<gram>"  (RPrint)       "Imprime una gramática derecha",
-         Cmd [":lprint"]      "<gram>"  (LPrint)       "Imprime una gramática izquierda",
-         Cmd [":quit"]        ""        (const Quit)   "Salir del intérprete",
-         Cmd [":help",":?"]   ""        (const Help)   "Mostrar esta lista de comandos" ]
+    =  [ Cmd [":browse"]      ""        (const Browse) "See the grammar names in scope",
+         Cmd [":rload"]       "<file>"  (RCompile)     "Load a right grammar from file",
+         Cmd [":lload"]       "<file>"  (LCompile)     "Load a left grammar from file",
+         Cmd [":rprint"]      "<gram>"  (RPrint)       "Print a grammar as right grammar",
+         Cmd [":lprint"]      "<gram>"  (LPrint)       "Print a grammar as left grammar",
+         Cmd [":quit"]        ""        (const Quit)   "Exit",
+         Cmd [":help",":?"]   ""        (const Help)   "Show command list" ]
   
   helpTxt :: [InteractiveCommand] -> String
   helpTxt cs
-    =  "Lista de comandos:  Cualquier comando puede ser abreviado a :c donde\n" ++
-       "c es el primer caracter del nombre completo.\n\n" ++
+    =  "Command list:  Any name can be shorted as :c where\n" ++
+       "c is the first part of the complete name.\n\n" ++
        unlines (map (\ (Cmd c a _ d) -> 
                      let  ct = concat (intersperse ", " (map (++ if null a then "" else " " ++ a) c))
-                     in   ct ++ replicate ((24 - length ct) `max` 2) ' ' ++ d) cs)
+                     in   ct ++ replicate ((24 - length ct) `max` 2) ' ' ++ d) cs) ++ "\n"
 
 
   compileFile :: St -> String -> String -> Bool -> IO St
   compileFile state@(S {..}) f name right = do
-      putStrLn ("Abriendo "++f++"...")
+      putStrLn ("Opening "++f++"...")
       let f'= reverse(dropWhile isSpace (reverse f))
       x     <- catch (readFile f')
                  (\e -> do let err = show (e :: IOException)
-                           hPutStr stderr ("No se pudo abrir el archivo " ++ f' ++ ": " ++ err ++"\n")
+                           hPutStr stderr ("Unable to open file " ++ f' ++ ": " ++ err ++"\n")
                            return "")
       gram <- do if right then do rg <- parseIO f' (rgram_parse) x
                                   return (maybe Nothing (\x -> Just (Right x)) rg)
