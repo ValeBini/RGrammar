@@ -94,7 +94,7 @@ module Main where
 -- toma un string (nombre del archivo), si es del tipo "x.gram" devuelve (Just x), sino Nothing
   getName :: String -> Maybe String
   getName s = let r = reverse s
-              in if isPrefixOf "marg." r then (Just (reverse (drop 5 r)))
+              in if isPrefixOf "mrg." r then (Just (reverse (drop 4 r)))
                                          else Nothing
 
 -- toma un string y devuelve el dfa asociado a ese nombre
