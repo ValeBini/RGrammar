@@ -1,6 +1,6 @@
 module Eval (
        eval,
-       checkEq
+       evalStmt
        )
        where
 
@@ -78,18 +78,23 @@ evalG (SConcat g0 g1) = do d0 <- evalG g0
                            return (dfaConcat d0 d1)
 evalG (SComp g) = do d <- evalG g
                      return (dfaComplement d)
+evalG (SDiff g0 g1) = do d0 <- evalG g0
+                         d1 <- evalG g1
+                         return (dfaIntersect d0 (dfaComplement d1))    
 
 eval :: Env -> SGrammar -> Either String GDFA
 eval state sgrammar = case runStateError (evalG sgrammar) state of
                          Left e -> Left e
                          Right (d, st) -> Right d
 
-evalEq :: (MonadState m, MonadError m) => Stmt -> m Bool
-evalEq (SEq g0 g1) = do d0 <- evalG g0
-                        d1 <- evalG g1
-                        return (dfaEq d0 d1)
+evalBool :: (MonadState m, MonadError m) => Stmt -> m Bool
+evalBool (SEq g0 g1) = do d0 <- evalG g0
+                          d1 <- evalG g1
+                          return (dfaEq d0 d1)
+evalBool (SAsk str g) = do d <- evalG g
+                           return (dfaAsk d str)
 
-checkEq :: Env -> Stmt -> Either String Bool
-checkEq state stmt = case runStateError (evalEq stmt) state of
+evalStmt :: Env -> Stmt -> Either String Bool
+evalStmt state stmt = case runStateError (evalBool stmt) state of
                         Left e -> Left e
                         Right (b, st) -> Right b

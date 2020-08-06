@@ -89,6 +89,7 @@ type Env = [(Name, GDFA)]
 -- un statement es:
 data Stmt = SDef Name SGrammar    -- una asignacion de un grammar aun nombre
           | SEq SGrammar SGrammar -- una consulta de equivalencia de dos grammar
+          | SAsk String SGrammar  -- una consulta de si un string es aceptado por
 
 -- un grammar puede ser:          
 data SGrammar = SGram Name                -- el nombre de una gramática cargada
@@ -97,3 +98,4 @@ data SGrammar = SGram Name                -- el nombre de una gramática cargada
               | SRever SGrammar           -- la reversa de una gramatica
               | SConcat SGrammar SGrammar -- la concatenacion de dos gramaticas
               | SComp SGrammar            -- el complemento de una gramatica
+              | SDiff SGrammar SGrammar   -- la diferencia entre dos gramaticas

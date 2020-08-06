@@ -200,13 +200,13 @@ module Main where
   handleStmt :: St -> Stmt -> IO St
   handleStmt state stmt = do case stmt of 
                                 SDef n g -> addDef n g
-                                SEq g0 g1 -> evalIfEq 
+                                _ -> checkBool 
       where 
         addDef n g = let res = eval (env state) g
                      in case res of
                           Left e -> putStrLn e >> return state
                           Right dfa -> return (S (replace n dfa (env state)))
-        evalIfEq = let res = checkEq (env state) stmt
+        checkBool = let res = evalStmt (env state) stmt
                    in case res of 
                          Left e -> putStrLn e >> return state
                          Right b -> putStrLn (show b) >> return state 

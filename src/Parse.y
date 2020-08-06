@@ -31,15 +31,15 @@ import Prelude hiding (LT)
     '!'     { TIntersec }
     '~'     { TReverse }
     '.'     { TConcat }
-    '-'     { TComplem }
+    '-'     { TDiff }
+    '\''    { TComplem }
+    '?'     { TAsk }
 
-%left '=='
+%left '==' 
+%nonassoc '?'
 %left '='
-%left '+' 
-%left '!'
-%left '.'
-%nonassoc '~'
-%nonassoc '-'
+%left '+' '!' '-' '.'
+%nonassoc '~' '\''
 %nonassoc '{' '}'
 %nonassoc '->'
 %nonassoc ';'
@@ -90,11 +90,13 @@ Grammar     : NT                              { SGram $1 }
             | Grammar '!' Grammar             { SInter $1 $3 }
             | Grammar '~'                     { SRever $1 }
             | Grammar '.' Grammar             { SConcat $1 $3}
-            | '-' Grammar                     { SComp $2 }
+            | Grammar '\''                    { SComp $1 }
             | '(' Grammar ')'                 { $2 }
+            | Grammar '-' Grammar             { SDiff $1 $3 }
 
 Stmt        : NT '=' Grammar                  { SDef $1 $3 }
             | Grammar '==' Grammar            { SEq $1 $3 }
+            | T '?' Grammar                   { SAsk $1 $3 }
 
 {
 
@@ -145,6 +147,8 @@ data Token = TArrow
                 | TReverse
                 | TConcat
                 | TComplem
+                | TDiff
+                | TAsk
                deriving Show
 
 ----------------------------------
@@ -174,7 +178,9 @@ lexer cont s = case s of
                     ('!':cs) -> cont TIntersec cs
                     ('~':cs) -> cont TReverse cs
                     ('.':cs) -> cont TConcat cs
-                    ('-':cs) -> cont TComplem cs
+                    ('-':cs) -> cont TDiff cs
+                    ('\'':cs) -> cont TComplem cs
+                    ('?':cs) -> cont TAsk cs
                     unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
                     where lexNT cs = let (nt, rest) = span isAlphaNum cs 
                                         in cont (TNT nt) rest

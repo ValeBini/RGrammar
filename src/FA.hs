@@ -8,13 +8,14 @@ module FA (
     dfaReverse,
     dfaConcat,
     dfaEq,
-    minimizeDFA
+    minimizeDFA,
+    dfaAsk
     )
     where
 
 import Data.Set (fromList, fold, isSubsetOf, intersection, empty, toAscList, toList, unions, Set) 
 import qualified Data.Set as S (map, union)
-import Data.List (union, (\\), delete, elemIndex, intersect)
+import Data.List (union, (\\), delete, elemIndex, intersect, words, all)
 import Common
 
 ----------------------------------------------------------
@@ -328,3 +329,23 @@ dfaEq dfa0 dfa1 = let min0 = minimizeDFA dfa0
                       l1 = dfaIntersection (dfaComplement min1) min0
                   in (emptyLanguage l0) && (emptyLanguage l1)
 
+
+--------------- Funciones para ver si un string --------------
+------------------- es aceptado por un DFA -------------------
+
+-- Dado un DFA, un String y un estado, toma el estado y el primer caracter del string
+-- y pasa al estado al que este le lleva. Cuando ya no hay mas caracteres devuelve
+-- True si el estado en el que está parado es de aceptación.
+dfaAccept :: Eq a => DFA a -> [String] -> State a -> Bool
+dfaAccept dfa@(DA xs st (F f) ac i) [] s = elem s ac
+dfaAccept dfa@(DA xs st (F f) ac i) (c:cs) s = let next = [s' | s'<-st, elem (s, (DSym c), s') f]
+                                               in dfaAccept dfa cs (head next) 
+    -- next tendrá solo un elemento por la propiedad de determinismo de los DFA
+
+-- Dado un DFA y un String, usa dfaAccept para determinar si el DFA acepta el string.
+-- Primero revisamos que todos los caracteres pertenezcan a los símbolos del DFA.
+dfaAsk :: Eq a => DFA a -> String -> Bool
+dfaAsk dfa@(DA xs st (F f) ac i) str = let str' = words str 
+                                       in if all (\s -> elem (DSym s) xs) str'
+                                        then dfaAccept dfa str' i
+                                        else False
