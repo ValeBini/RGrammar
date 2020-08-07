@@ -7,6 +7,7 @@ module FA (
     dfaIntersect,
     dfaReverse,
     dfaConcat,
+    dfaDiff,
     dfaEq,
     minimizeDFA,
     dfaAsk
@@ -16,6 +17,7 @@ module FA (
 import Data.Set (fromList, fold, isSubsetOf, intersection, empty, toAscList, toList, unions, Set) 
 import qualified Data.Set as S (map, union)
 import Data.List (union, (\\), delete, elemIndex, intersect, words, all)
+import qualified Data.List.NonEmpty as NE (fromList, toList, NonEmpty)
 import Common
 
 ----------------------------------------------------------
@@ -41,7 +43,7 @@ equal xs ys = (fromList xs) == (fromList ys)
 goesTo :: Ord a => Set a -> NSym -> [State a] -> R a -> Set a
 goesTo st x sts (R r) = fold S.union empty (S.map nextSet st)
     where nextSet s = let direct = fromList [runState s' | s'<-sts, elem (State s, x, s') r]
-                          indirect = goesTo direct (NSym Nothing) sts (R r)
+                          indirect = goesTo direct (NSym "") sts (R r)
                       in S.union direct indirect
 
 -- Toma el conjunto de los símbolos, la relación original, la lista de los estados
@@ -75,12 +77,10 @@ dfaF xs (R rs) sts i = let f = map (\x -> (i, x, t i x)) xs
 --nfaToDFA :: NFA (Maybe String) -> DFA [Maybe String]
 nfaToDFA :: (Eq a, Ord a) => NFA a -> DFA (Set a)
 nfaToDFA (NA xs st (R rs) ac i) = DA xs' st' (F f) ac' i'
-    where xs' = concat (map (\(NSym x) -> case x of
-                                            Just s -> [DSym s]
-                                            Nothing -> []) xs)
-          i' = State (fromList (union [runState i] [runState s | s<-st, elem (i, NSym Nothing, s) rs]))
-          f = map (\(s0,NSym (Just x),s1) -> (s0,DSym x,s1)) f'
-          R f' = (dfaF (xs \\ [NSym Nothing]) (R rs) st i')
+    where xs' = map (\(NSym x) -> DSym (NE.fromList x)) (xs \\ [NSym ""])
+          i' = State (fromList (union [runState i] [runState s | s<-st, elem (i, NSym "", s) rs]))
+          f = map (\(s0,NSym x,s1) -> (s0,DSym (NE.fromList x),s1)) f'
+          R f' = (dfaF (xs \\ [NSym ""]) (R rs) st i')
           st' = removeRep ((map (\(a,b,c)->a) f) ++ (map (\(a,b,c)->c) f))
           ac' = [s | s<-st', (intersection (runState s) prevAc) /= empty]
           prevAc = fromList (map runState ac)
@@ -119,9 +119,11 @@ nextPartition :: (Eq a) => [State a] -> [[State a]] -> [DSym] -> F a -> [[State 
 nextPartition sts last xs (F f) = concat (map (partition []) last)
     where partition new [] = new
           partition [] (s:ss) = partition [[s]] ss
-          partition (p:ps) (s:ss) = if distinguishable (head p) s then partition (p:(partition ps [s])) ss
-                                                                  else partition ((s:p):ps) ss
-          distinguishable s1 s2 = or (map (\x -> (numOfPart [s | s<-sts, elem (s1,x,s) f] last 0) /= (numOfPart [s | s<-sts, elem (s2,x,s) f] last 0)) xs)
+          partition (p:ps) (s:ss) = if distinguishable (head p) s 
+                                        then partition (p:(partition ps [s])) ss
+                                        else partition ((s:p):ps) ss
+          distinguishable s1 s2 = or (map (\x -> (numOfPart [s | s<-sts, elem (s1,x,s) f] last 0) /= 
+                                                 (numOfPart [s | s<-sts, elem (s2,x,s) f] last 0)) xs)
           numOfPart [s] [] i = -1
           numOfPart [s] (p:ps) i = if (elem s p) then i 
                                                  else numOfPart [s] ps (i+1)
@@ -138,7 +140,9 @@ removeUndist :: (Eq a, Ord a) => DFA a -> DFA [a]
 removeUndist (DA xs st (F f) ac i) = DA xs st' (F f') ac' i'
     where st' = minimumStates xs st [ac, st \\ ac] (F f)
           f' = [(s0, x, s1) | s0<-st', x<-xs, s1<-st', connect s0 x s1]
-          connect s0 x s1 = or (concat (map (\ss0-> (map (\ss1-> elem (State ss0, x, State ss1) f) (runState s1))) (runState s0)))
+          connect s0 x s1 = or (concat (map (\ss0-> (map (\ss1-> elem (State ss0, x, State ss1) f) 
+                                                         (runState s1))) 
+                                            (runState s0)))
           ac' = [s | s<-st', [ss | ss<-ac, elem (runState ss) (runState s)] /= []]
           i' = let [s] = [s | s<-st', elem (runState i) (runState s)] in s
 
@@ -169,10 +173,26 @@ addSym (DA xs st (F f) ac i) new = DA xs' st' (F f') ac' i'
     where xs' = xs ++ new
           st' = (State Nothing):(map toMaybe st)
           f' = (map (\(s0, x, s1) -> ((toMaybe s0), x, (toMaybe s1))) f) ++ newT
-          newT = [(s, x, State Nothing) | s<-st', x<-new] ++ [(State Nothing, x, State Nothing) | x<-xs]
+          newT = [(s, x, State Nothing) | s<-st', x<-new] ++ 
+                 [(State Nothing, x, State Nothing) | x<-xs]
           ac' = map toMaybe ac
           i' = toMaybe i
           toMaybe s = State (Just (runState s))
+
+-- Unifica el alfabeto de dos DFA. Agrega a cada uno los símbolos que el otro 
+-- tiene y el no. El conjunto de símbolos de cada uno será la unión de los
+-- originales.
+unifyAlph :: GDFA -> GDFA -> (GDFA, GDFA)
+unifyAlph dfa0@(DA xs0 _ _ _ _) dfa1@(DA xs1 _ _ _ _) =
+    let new0 = xs1 \\ xs0
+        new1 = xs0 \\ xs1 
+        dfa0' = case new0 of 
+                     [] -> dfa0
+                     _ -> dfaStandar (addSym dfa0 new0)
+        dfa1' = case new1 of
+                     [] -> dfa1
+                     _ -> dfaStandar (addSym dfa1 new1)
+    in (dfa0', dfa1')
 
 -- Intersección de dos DFAs. En esta caso aceptamos los estados para los 
 -- cuales ambos elementos del par son aceptados en sus respectivos DFA.
@@ -188,16 +208,10 @@ dfaIntersection (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) =
           ac = [State (s0,s1) | (State (s0,s1))<-st, elem (State s0) ac0, elem (State s1) ac1]
           i = State (runState i0, runState i1)
 
--- Realiza la intersección y estandariza los estados
-dfaIntersect :: (Eq a, Eq b) => DFA a -> DFA b -> DFA Int
-dfaIntersect dfa0@(DA xs0 _ _ _ _) dfa1@(DA xs1 _ _ _ _) = 
-    let new0 = xs1 \\ xs0
-        new1 = xs0 \\ xs1 
-    in case (new0, new1) of
-        ([], []) -> dfaStandar (dfaIntersection dfa0 dfa1)
-        (x:xs, []) -> dfaStandar (dfaIntersection (addSym dfa0 new0) dfa1)
-        ([], x:xs) -> dfaStandar (dfaIntersection dfa0 (addSym dfa1 new1))
-        (x:xs, y:ys) -> dfaStandar (dfaIntersection (addSym dfa0 new0) (addSym dfa1 new1))
+-- Unifica los alfabetos, realiza la intersección y estandariza los estados
+dfaIntersect :: GDFA -> GDFA -> GDFA 
+dfaIntersect dfa0 dfa1 = let (dfa0', dfa1') = unifyAlph dfa0 dfa1
+                        in dfaStandar (dfaIntersection dfa0' dfa1') 
 
 -- Unión de dos DFAs. En este caso aceptamos los estados para los cuales
 -- al menos uno de sus elementos es aceptado en su DFA original.
@@ -212,23 +226,17 @@ dfaUnion (DA xs0 st0 (F f0) ac0 i0) (DA xs1 st1 (F f1) ac1 i1) = DA xs st (F f) 
           ac = [State (s0,s1) | (State (s0,s1))<-st, (elem (State s0) ac0) || (elem (State s1) ac1)]
           i = State (runState i0, runState i1)
 
--- Realiza la unión y estandariza los estados
-dfaUnite :: (Eq a, Eq b, Ord a, Ord b) => DFA a -> DFA b -> DFA Int
-dfaUnite dfa0@(DA xs0 _ _ _ _) dfa1@(DA xs1 _ _ _ _) = 
-    let new0 = xs1 \\ xs0
-        new1 = xs0 \\ xs1 
-    in case (new0, new1) of
-        ([], []) -> dfaStandar (dfaUnion dfa0 dfa1)
-        (x:xs, []) -> dfaStandar (dfaUnion (addSym dfa0 new0) dfa1)
-        ([], x:xs) -> dfaStandar (dfaUnion dfa0 (addSym dfa1 new1))
-        (x:xs, y:ys) -> dfaStandar (dfaUnion (addSym dfa0 new0) (addSym dfa1 new1))
+-- Unifica los alfabetos, realiza la unión y estandariza los estados
+dfaUnite :: GDFA -> GDFA -> GDFA
+dfaUnite dfa0 dfa1 = let (dfa0', dfa1') = unifyAlph dfa0 dfa1
+                    in dfaStandar (dfaUnion dfa0' dfa1')
 
 -- Esta función transforma un DFA en un NFA, cambianod sus símbolos 
 -- de DSym a NSym para que exista la cadena vacía.
 dfaToNFA :: DFA a -> NFA a
 dfaToNFA (DA xs st (F f) ac i) = NA xs' st (R r) ac i
-    where xs' = map (\x -> NSym (Just (runDSym x))) xs
-          r = map (\(s0, (DSym x), s1) -> (s0, (NSym (Just x)), s1)) f
+    where xs' = map (\(DSym x) -> NSym (NE.toList x)) xs
+          r = map (\(s0, (DSym x), s1) -> (s0, (NSym (NE.toList x)), s1)) f
 
 -- Esta función toma un NFA con estados de cualquier tipo 'a' y un entero.
 -- Renombra los estados del NFA en todas sus componentes llevándolo a un 
@@ -253,7 +261,7 @@ nfaConcatenation :: (Eq a, Eq b) => NFA a -> NFA b -> NFA Int
 nfaConcatenation nfa0 nfa1 =
     let (NA xs0 st0 (R r0) ac0 i0) = nfaRename nfa0 0
         (NA xs1 st1 (R r1) ac1 i1) = nfaRename nfa1 (length st0)
-        transitions = [(s0, NSym Nothing, i1) | s0 <- ac0]
+        transitions = [(s0, NSym "", i1) | s0 <- ac0]
         r = r0 ++ r1 ++ transitions
     in NA (union xs0 xs1) (st0 ++ st1) (R r) ac1 i0
 
@@ -279,7 +287,7 @@ nfaReverse (NA xs st (R r) ac i) = NA xs st' (R r') ac' i'
     where st' = (State Nothing) : (map (\(State s) -> State (Just s)) st)
           r' = r0 ++ r1
           r0 = (map (\(State s0, x, State s1) -> (State (Just s1), x, State (Just s0))) r) 
-          r1 = [(State Nothing, NSym Nothing, State (Just s)) | (State s) <- ac]
+          r1 = [(State Nothing, NSym "", State (Just s)) | (State s) <- ac]
           ac' = [State (Just (runState i))]
           i' = State Nothing
 
@@ -292,6 +300,11 @@ dfaReverse dfa = let nfa = dfaToNFA dfa
                      dReverse = nfaToDFA nReverse
                  in dfaStandar dReverse
 
+-- Unifica los alfabetos y obtiene la diferencia haciendo la intersección del 
+-- primero con el complemento del segundo.
+dfaDiff :: GDFA -> GDFA -> GDFA 
+dfaDiff dfa0 dfa1 = let (dfa0', dfa1') = unifyAlph dfa0 dfa1
+                    in dfaStandar (dfaIntersection dfa0' (dfaComplement dfa1'))
 
 ----------------------------------------------------------
 ------------- FUNCIONES EQUIVALENCIA DE DFAs -------------
@@ -308,15 +321,16 @@ emptyLanguage dfa@(DA xs st (F f) ac i) = let rs = reachedStates dfa [i]
 -- de todos los estados alcanzados por el autómata partiendo de los estados
 -- del conjunto dado.
 reachedStates :: (Eq a, Ord a) => DFA a -> [State a] -> [State a]
-reachedStates dfa@(DA xs st (F f) ac i) rs = let old = fromList rs
-                                                 new = fromList newStates
-                                             in if isSubsetOf new old then rs
-                                                                      else reachedStates dfa (toList (S.union old new))
-    where newStates = concat (map (\s -> map (\x -> ff s x) xs) rs)
-          ff s x = ff' s x f
-          ff' s x ((s0,x0,s1):ss) = if s==s0 && x==x0 then s1
-                                                      else ff' s x ss 
-
+reachedStates dfa@(DA xs st (F f) ac i) rs = 
+    let old = fromList rs
+        new = fromList newStates
+    in if isSubsetOf new old then rs
+                             else reachedStates dfa (toList (S.union old new))
+        where newStates = concat (map (\s -> map (\x -> ff s x) xs) rs)
+              ff s x = ff' s x f
+              ff' s x ((s0,x0,s1):ss) = if s==s0 && x==x0 then s1
+                                                          else ff' s x ss 
+  
 
 -- Equivalencia de DFAs. Para realizar esto, minimiza ambos DFA
 -- y luego checkea que sean isomorfos viendo que las intersecciones
@@ -336,16 +350,17 @@ dfaEq dfa0 dfa1 = let min0 = minimizeDFA dfa0
 -- Dado un DFA, un String y un estado, toma el estado y el primer caracter del string
 -- y pasa al estado al que este le lleva. Cuando ya no hay mas caracteres devuelve
 -- True si el estado en el que está parado es de aceptación.
-dfaAccept :: Eq a => DFA a -> [String] -> State a -> Bool
+dfaAccept :: Eq a => DFA a -> [NE.NonEmpty Char] -> State a -> Bool
 dfaAccept dfa@(DA xs st (F f) ac i) [] s = elem s ac
 dfaAccept dfa@(DA xs st (F f) ac i) (c:cs) s = let next = [s' | s'<-st, elem (s, (DSym c), s') f]
                                                in dfaAccept dfa cs (head next) 
     -- next tendrá solo un elemento por la propiedad de determinismo de los DFA
 
+
 -- Dado un DFA y un String, usa dfaAccept para determinar si el DFA acepta el string.
 -- Primero revisamos que todos los caracteres pertenezcan a los símbolos del DFA.
 dfaAsk :: Eq a => DFA a -> String -> Bool
-dfaAsk dfa@(DA xs st (F f) ac i) str = let str' = words str 
+dfaAsk dfa@(DA xs st (F f) ac i) str = let str' = map NE.fromList (words str) 
                                        in if all (\s -> elem (DSym s) xs) str'
                                         then dfaAccept dfa str' i
                                         else False

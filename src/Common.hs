@@ -1,5 +1,7 @@
 module Common where
 
+import Data.List.NonEmpty (NonEmpty)
+
 data RGramTerm = RNT String
                | RSigma
                | RT String
@@ -52,11 +54,11 @@ data LGram = LG [NT] [T] [LProd] NT
 type Gram = Either LGram RGram 
 
 -- simbolos automatas no deterministas
-newtype NSym = NSym {runNSym :: Maybe String} -- el simbolo Nothing es la palabra vacia
+newtype NSym = NSym {runNSym :: String} 
     deriving (Eq, Ord, Show)
 
 -- simbolos automatas deterministas
-newtype DSym = DSym {runDSym :: String}
+newtype DSym = DSym {runDSym :: NonEmpty Char} -- no debe existir la palabra vacía en un DFA
     deriving (Eq, Ord, Show)
 
 newtype State a = State {runState :: a}

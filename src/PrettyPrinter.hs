@@ -24,11 +24,11 @@ parensIf False = id
 -- pretty-printer de gramaticas
 
 ppR :: RGram -> Doc
-ppR (RG nts ts ps i) = text "{\n" <> foldr (<>) (text "") (map printRProds (map selectProds nts)) <> text "}"
+ppR (RG nts ts ps i) = text "\n" <> foldr (<>) (text "") (map printRProds (map selectProds nts)) 
        where selectProds nt = filter (\p -> let nt' = extractRNT p in nt==nt') ps
 
 ppL :: LGram -> Doc
-ppL (LG nts ts ps i) = text "{\n" <> foldr (<>) (text "") (map printLProds (map selectProds nts)) <> text "}"
+ppL (LG nts ts ps i) = text "\n" <> foldr (<>) (text "") (map printLProds (map selectProds nts)) 
        where selectProds nt = filter (\p -> let nt' = extractLNT p in nt==nt') ps
 
 printRProds :: [RProd] -> Doc

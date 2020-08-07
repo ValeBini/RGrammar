@@ -37,8 +37,10 @@ import Prelude hiding (LT)
 
 %left '==' 
 %nonassoc '?'
-%left '='
-%left '+' '!' '-' '.'
+%nonassoc '='
+%left '+' '-' 
+%left '!' 
+%left '.'
 %nonassoc '~' '\''
 %nonassoc '{' '}'
 %nonassoc '->'
@@ -81,9 +83,9 @@ RProd        : RRule ';' RProd                { RProd $1 $3 }
 LProd        : LRule ';' LProd                { LProd $1 $3 }
              | LRule ';'                      { $1 }
 
-RGram        : '{' RProd '}'                  { $2 }
+RGram        :  RProd                         { $1 }
 
-LGram        : '{' LProd '}'                  { $2 }
+LGram        :  LProd                         { $1 }
 
 Grammar     : NT                              { SGram $1 }
             | Grammar '+' Grammar             { SUnion $1 $3 }
@@ -126,7 +128,7 @@ catchP m k = \s l -> case m s l of
                         Failed e -> k e s l
 
 happyError :: P a
-happyError = \ s i -> Failed $ "Línea "++(show (i::LineNumber))++": Error de parseo\n"++(s)
+happyError = \ s i -> Failed $ "Line "++(show (i::LineNumber))++": Parse error\n"++(s)
 
 data Token = TArrow
                 | TOr
@@ -181,11 +183,12 @@ lexer cont s = case s of
                     ('-':cs) -> cont TDiff cs
                     ('\'':cs) -> cont TComplem cs
                     ('?':cs) -> cont TAsk cs
-                    unknown -> \line -> Failed $ "Línea "++(show line)++": No se puede reconocer "++(show $ take 10 unknown)++ "..."
+                    unknown -> \line -> Failed $ "Line "++(show line)++": Unable to recognize "++(show $ take 10 unknown)++ "..."
                     where lexNT cs = let (nt, rest) = span isAlphaNum cs 
                                         in cont (TNT nt) rest
                           lexT cs = let (t, rest) = span (/= '"') cs
-                                        in cont (TT t) (tail rest)
+                                        in if t /= [] then cont (TT (filter (/= ' ') t)) (tail rest)
+                                                      else \line -> Failed $ "Line "++(show line)++": Empty terminal"
                           consumirBK anidado cl cont s = case s of
                                                               ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
                                                               ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs

@@ -1,6 +1,8 @@
-{
+
 A -> "a" | "b";
 A -> "a" B | "b" B;
-& -> "b" A;
+& -> "b" A | "c" D;
+D -> "c" B | "a" A | "b" &;
 B -> "b" A | \;
-}
+
+-- gramatica derecha

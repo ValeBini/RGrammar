@@ -8,6 +8,7 @@ module Grammar (
 import Data.Set (fromList, fold, isSubsetOf, intersection, empty, toAscList, toList, unions, Set) 
 import qualified Data.Set as S (map, union)
 import Data.List (union, (\\), delete, elemIndex, intersect)
+import qualified Data.List.NonEmpty as NE (fromList, toList)
 import Common
 import FA
 import Prelude hiding (LT)
@@ -94,10 +95,10 @@ gramTermToGram (Right gram) = Right (rgramTermToGram gram)
 -- Toma una gramática derecha y devuelve un NFA equivalente (cuyos estados son Int)
 rgramToNFA :: RGram -> NFA (Maybe String)
 rgramToNFA (RG nts ts ps nt) = NA syms states r ac i
-  where syms = map (\t -> NSym (Just (runT t))) ts
+  where syms = map (\t -> NSym ((runT t))) ts
         states = ((State Nothing):(map (\nt -> State (Just (runNT nt))) nts))
-        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (RPN s x b) ps]
-                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (RPT s x) ps])
+        r =  R (union [(State (Just (runNT s)), NSym (runT x), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (RPN s x b) ps]
+                      [(State (Just (runNT s)), NSym (runT x), State Nothing) | s<-nts, x<-ts, elem (RPT s x) ps])
         ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (RPE s) ps]
         i = (State (Just (runNT nt)))
 
@@ -106,10 +107,10 @@ rgramToNFA (RG nts ts ps nt) = NA syms states r ac i
 -- reverse del NFA obtenido.
 lgramToNFA :: LGram -> NFA (Maybe (Maybe String)) 
 lgramToNFA (LG nts ts ps nt) = nfaReverse (NA syms states r ac i)
-  where syms = map (\t -> NSym (Just (runT t))) ts
+  where syms = map (\t -> NSym (runT t)) ts
         states = ((State Nothing):(map (\nt -> State (Just (runNT nt))) nts))
-        r =  R (union [(State (Just (runNT s)), NSym (Just (runT x)), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (LPN s b x) ps]
-                        [(State (Just (runNT s)), NSym (Just (runT x)), State Nothing) | s<-nts, x<-ts, elem (LPT s x) ps])
+        r =  R (union [(State (Just (runNT s)), NSym (runT x), State (Just (runNT b))) | s<-nts, x<-ts, b<-nts, elem (LPN s b x) ps]
+                      [(State (Just (runNT s)), NSym (runT x), State Nothing) | s<-nts, x<-ts, elem (LPT s x) ps])
         ac = (State Nothing):[State (Just (runNT s)) | s<-nts, elem (LPE s) ps]
         i = (State (Just (runNT nt)))
 
@@ -167,12 +168,12 @@ dfaToRGram dfa = Right (RG nts ts ps nt)
     where DA xs st (F f) ac i = minDfaClean (minimizeDFA dfa)
           nts = let l = length st
                 in ntsList l
-          ts = map (\x -> T (runDSym x)) xs
+          ts = map (\(DSym x) -> T (NE.toList x)) xs
           ps = (map fToProd f) ++ finalprods
           nt = NT "&"
           fToProd (s0,DSym x,s1) = let nt0 = findNT s0
                                        nt1 = findNT s1
-                                    in RPN nt0 (T x) nt1
+                                    in RPN nt0 (T (NE.toList x)) nt1
           finalprods = map (\s -> RPE (findNT s)) ac
           findNT s = let Just p = elemIndex s st'
                      in nts !! p

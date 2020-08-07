@@ -9,7 +9,6 @@ import Data.Maybe
 import Control.Applicative
 import Control.Monad
 import Prelude
---import Text.PrettyPrint.HughesPJ (render)
 import PrettyPrinter
 import Common
 import Grammar
@@ -80,7 +79,7 @@ evalG (SComp g) = do d <- evalG g
                      return (dfaComplement d)
 evalG (SDiff g0 g1) = do d0 <- evalG g0
                          d1 <- evalG g1
-                         return (dfaIntersect d0 (dfaComplement d1))    
+                         return (dfaDiff d0 d1)    
 
 eval :: Env -> SGrammar -> Either String GDFA
 eval state sgrammar = case runStateError (evalG sgrammar) state of

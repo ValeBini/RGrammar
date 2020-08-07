@@ -1,10 +1,11 @@
 {-
 gramatica para la union de ab y su reversa
 -}
-{
-    & -> "a" A | "c" C | \;
-    A -> "b" B;
-    B -> "a" A | \;
-    C -> "d" D;
-    D -> "c" C | \;
-}
+-- {ab^n | n>=0} + {ab^n | n>=0}' 
+
+& -> "a" A | "c" C | \;
+A -> "b" B;
+B -> "a" A | \ |\;
+C -> "d" D;
+D -> "c" C | \;
+

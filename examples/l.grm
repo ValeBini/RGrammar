@@ -1,0 +1,9 @@
+-- gramatica izquierda 
+
+A -> "a" | "b" | "c";
+A -> B "c" | B "a" | D "c";
+& -> A "c" | A "b" | D "c" | B "b";
+B -> A "c" | D "a" | \;
+D -> B "c" | D "a" | A "a" | \;
+
+-- fin gramatica izquierda

@@ -2,7 +2,7 @@
 gramatica para el lenguaje
     {(cd)^n | n>=0}
 -}
-{
+
     & -> "c" C | \;
     C -> "d" &;
-}
+
