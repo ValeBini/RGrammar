@@ -66,7 +66,18 @@ printT (T t) = text "\"" <> text t <> text "\""
 printNT :: NT -> Doc
 printNT (NT nt) = text nt 
 
+printAlph :: [T] -> Doc
+printAlph [] = text ""
+printAlph [t] = printT t
+printAlph (t:ts) = printT t <> text "," <> printAlph ts
+
+alph :: Gram -> [T]
+alph (Left (LG _ ts _ _)) = ts
+alph (Right (RG _ ts _ _)) = ts
+
 printGram :: Gram -> Doc
-printGram g = case g of 
+printGram g = text "\n{" <> printAlph (alph g) <> text "}\n" <>
+              case g of 
                    Left lg -> ppL lg
                    Right rg -> ppR rg
+

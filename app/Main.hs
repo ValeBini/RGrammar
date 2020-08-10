@@ -94,8 +94,10 @@ module Main where
 -- toma un string (nombre del archivo), si es del tipo "x.gram" devuelve (Just x), sino Nothing
   getName :: String -> Maybe String
   getName s = let r = reverse s
-              in if isPrefixOf "mrg." r then (Just (reverse (drop 4 r)))
-                                         else Nothing
+                  name = reverse (drop 4 r)
+                  b = all isAlphaNum name
+              in if (isPrefixOf "mrg." r) && b then (Just name)
+                                               else Nothing
 
 -- toma un string y devuelve el dfa asociado a ese nombre
   lookforDFA :: Name -> Env -> Maybe GDFA 
