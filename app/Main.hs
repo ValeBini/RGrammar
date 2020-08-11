@@ -93,13 +93,13 @@ module Main where
        else
          return (InteractiveStmt x)
 
--- toma un string (nombre del archivo), si es del tipo "x.gram" devuelve (Just x), sino Nothing
-  getName :: String -> Maybe String
-  getName s = let r = reverse s
-                  name = reverse (drop 4 r)
-                  --b = all isAlphaNum name
-              in if (isPrefixOf "mrg." r) then (Just name)
-                                          else Nothing
+-- toma un string (nombre del archivo), si es del tipo "x.gram" devuelve True
+  validFilename :: String -> Bool
+  validFilename s = isSuffixOf ".grm" s
+
+-- toma un string (nombre de la gramatica a cargar), si todos sus caracteres son alfanum devuelve True
+  validName :: String -> Bool
+  validName s = all isAlphaNum s
 
 -- toma un string y devuelve el dfa asociado a ese nombre
   lookforDFA :: Name -> Env -> Maybe GDFA 
@@ -115,20 +115,16 @@ module Main where
          Help       ->  putStr (helpTxt commands) >> return (Just state)
          Browse     ->  do  putStr (unlines [ s | s <- reverse (nub (map fst env)) ])
                             return (Just state)
-         RCompile n c  ->  let name = getName c
-                           in case name of
-                               Nothing -> putStrLn "Invalid filename" >> return (Just state)
-                               Just s -> if (all isAlphaNum n) 
-                                            then do state' <- compileFile state c n True
-                                                    return (Just state')
-                                            else putStrLn "Invalid name" >> return (Just state)
-         LCompile n c  ->  let name = getName c
-                           in case name of
-                               Nothing -> putStrLn "Invalid filename" >> return (Just state)
-                               Just s -> if (all isAlphaNum n) 
-                                            then do state' <- compileFile state c n False
-                                                    return (Just state')
-                                            else putStrLn "Invalid name" >> return (Just state)
+         RCompile n c  ->  let (vn,vf) = (validName n, validFilename c)
+                           in if vn && vf then do state' <- compileFile state c n True
+                                                  return (Just state')
+                                          else do putStrLn (if vn then "Invalid filename" else "Invalid name") 
+                                                  return (Just state)
+         LCompile n c  ->  let (vn,vf) = (validName n, validFilename c)
+                           in if vn && vf then do state' <- compileFile state c n False
+                                                  return (Just state')
+                                          else do putStrLn (if vn then "Invalid filename" else "Invalid name") 
+                                                  return (Just state)
          RPrint s    ->  let g = lookforDFA s env
                          in case g of
                               Nothing -> putStr "Grammar not found\n" >> return (Just state)
