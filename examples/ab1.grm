@@ -1,8 +1,0 @@
-{- 
-gramática que acepta el lenguaje:
-   { (ab)^n | n >= 0}
--}
-  
-& -> "a" A | \;
-A -> "b" &;
-

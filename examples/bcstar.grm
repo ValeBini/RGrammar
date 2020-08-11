@@ -1,3 +1,8 @@
+{-
+Gramática que acepta el lenguaje {"b","c"}*
+Esto es, todas las cadenas que contengan símbolos
+"b" y "c", sin importar la cantidad ni el orden.
+-}
 
-    & -> "b" & | "c" & | \;
+& -> "b" & | "c" & | \;
 

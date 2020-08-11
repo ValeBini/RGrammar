@@ -11,7 +11,6 @@ import Control.Monad
 import Prelude
 import PrettyPrinter
 import Common
-import Grammar
 import FA
 
 ----------------------------------

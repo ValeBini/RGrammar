@@ -1,2 +1,7 @@
+{-
+Gramática que acepta el lenguaje {"a","b"}*
+Esto es, todas las cadenas que contengan símbolos
+"a" y "b", sin importar la cantidad ni el orden.
+-}
 
-    & -> "a" & | "b" & | \;
+& -> "a" & | "b" & | \;

@@ -1,0 +1,11 @@
+{- 
+Gramática que acepta el lenguaje:
+   { (ab)^n | n >= 0}
+
+Cadenas tipo "a b a b", "a b", "a b a b a b".
+Incluye la cadena vacía.
+-}
+  
+& -> "a" A | \;
+A -> "b" &;
+

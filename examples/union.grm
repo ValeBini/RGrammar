@@ -1,11 +1,16 @@
 {-
-gramatica para la union de ab y su reversa
+Gramatica para la unión de ab y su reversa
+
+{ab^n | n>=0} + {ba^n | n>=0}
+
+Esta gramática aceptará cadenas que alternen "a" y "b" 
+y cuyos primer y último símbolos sean diferentes.
 -}
--- {ab^n | n>=0} + {ab^n | n>=0}' 
 
 & -> "a" A | "c" C | \;
 A -> "b" B;
-B -> "a" A | \ |\;
+B -> "a" A | \;
 C -> "d" D;
 D -> "c" C | \;
 
+-- Sirve para probar: ab + ab' == union

@@ -344,6 +344,7 @@ dfaEq dfa0 dfa1 = let min0 = minimizeDFA dfa0
                   in (emptyLanguage l0) && (emptyLanguage l1)
 
 
+--------------------------------------------------------------
 --------------- Funciones para ver si un string --------------
 ------------------- es aceptado por un DFA -------------------
 

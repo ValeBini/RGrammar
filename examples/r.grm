@@ -1,3 +1,4 @@
+-- Gramática derecha cualquiera
 
 A -> "a" | "b";
 A -> "a" B | "b" B;
@@ -5,4 +6,4 @@ A -> "a" B | "b" B;
 D -> "e" B | "a" A | "b" &;
 B -> "b" A | \;
 
--- gramatica derecha
+

@@ -1,6 +1,9 @@
 {-
-gramatica para el lenguaje
-    {(cd)^n | n>=0}
+Gramatica que acepta el lenguaje
+    {(cd)^n | n >= 0}
+
+Cadenas tipo "c d c d", "c d", "c d c d c d".
+Incluye la cadena vacía.
 -}
 
     & -> "c" C | \;

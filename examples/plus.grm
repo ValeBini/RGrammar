@@ -1,4 +1,10 @@
+{-
+Gramática para escribir cadenas de tipo "x0 ++ x1 ++ ... ++ xn", donde
+cada xi puede ser a o b. Es un ejemplo de gramática donde los no terminales
+tienen más de un caracter.
+Esta gramática no incluye la cadena vacía.
+-}
 
-    & -> "a" A | "b" A | "a" | "b";
-    A -> "++" &;
+& -> "a" A | "b" A | "a" | "b";
+A -> "++" &;
 

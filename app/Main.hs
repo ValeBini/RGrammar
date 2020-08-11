@@ -59,8 +59,8 @@ module Main where
                   "Enter :? to receive help.")
         rec state 
 
-  data Command = RCompile String
-               | LCompile String
+  data Command = RCompile String String
+               | LCompile String String
                | RPrint String
                | LPrint String
                | Browse
@@ -73,8 +73,10 @@ module Main where
   interpretCommand :: String -> IO Command
   interpretCommand x
     =  if isPrefixOf ":" x then
-         do  let  (cmd,t')  =  break isSpace x
-                  t         =  dropWhile isSpace t'
+         do  let  (cmd,rest') =  break isSpace x
+                  rest        =  dropWhile isSpace rest'
+                  (t0,t1')    =  break isSpace rest
+                  t1          =  dropWhile isSpace t1'
              --  find matching commands
              let  matching  =  filter (\ (Cmd cs _ _ _) -> any (isPrefixOf cmd) cs) commands
              case matching of
@@ -83,7 +85,7 @@ module Main where
                                      "'. Enter :? to receive help.")
                            return Noop
                [Cmd _ _ f _]
-                   ->  do  return (f t)
+                   ->  do  return (f t0 t1)
                _   ->  do  putStrLn ("Ambiguous command, it could be " ++ 
                                      concat (intersperse ", " [ head cs | Cmd cs _ _ _ <- matching ]) ++ ".")
                            return Noop
@@ -95,9 +97,9 @@ module Main where
   getName :: String -> Maybe String
   getName s = let r = reverse s
                   name = reverse (drop 4 r)
-                  b = all isAlphaNum name
-              in if (isPrefixOf "mrg." r) && b then (Just name)
-                                               else Nothing
+                  --b = all isAlphaNum name
+              in if (isPrefixOf "mrg." r) then (Just name)
+                                          else Nothing
 
 -- toma un string y devuelve el dfa asociado a ese nombre
   lookforDFA :: Name -> Env -> Maybe GDFA 
@@ -113,16 +115,20 @@ module Main where
          Help       ->  putStr (helpTxt commands) >> return (Just state)
          Browse     ->  do  putStr (unlines [ s | s <- reverse (nub (map fst env)) ])
                             return (Just state)
-         RCompile c  ->  let name = getName c
-                         in case name of
-                           Nothing -> putStrLn "Invalid filename" >> return (Just state)
-                           Just s -> do state' <- compileFile state c s True
-                                        return (Just state')
-         LCompile c  ->  let name = getName c
-                         in case name of
-                           Nothing -> putStrLn "Invalid filename" >> return (Just state)
-                           Just s -> do state' <- compileFile state c s False
-                                        return (Just state')
+         RCompile n c  ->  let name = getName c
+                           in case name of
+                               Nothing -> putStrLn "Invalid filename" >> return (Just state)
+                               Just s -> if (all isAlphaNum n) 
+                                            then do state' <- compileFile state c n True
+                                                    return (Just state')
+                                            else putStrLn "Invalid name" >> return (Just state)
+         LCompile n c  ->  let name = getName c
+                           in case name of
+                               Nothing -> putStrLn "Invalid filename" >> return (Just state)
+                               Just s -> if (all isAlphaNum n) 
+                                            then do state' <- compileFile state c n False
+                                                    return (Just state')
+                                            else putStrLn "Invalid name" >> return (Just state)
          RPrint s    ->  let g = lookforDFA s env
                          in case g of
                               Nothing -> putStr "Grammar not found\n" >> return (Just state)
@@ -135,17 +141,17 @@ module Main where
                                  return (Just state')
                
 
-  data InteractiveCommand = Cmd [String] String (String -> Command) String
+  data InteractiveCommand = Cmd [String] String (String -> String -> Command) String
 
   commands :: [InteractiveCommand]
   commands
-    =  [ Cmd [":browse"]      ""        (const Browse) "See the grammar names in scope",
-         Cmd [":rload"]       "<file>"  (RCompile)     "Load a right grammar from file",
-         Cmd [":lload"]       "<file>"  (LCompile)     "Load a left grammar from file",
-         Cmd [":rprint"]      "<gram>"  (RPrint)       "Print a grammar as right grammar",
-         Cmd [":lprint"]      "<gram>"  (LPrint)       "Print a grammar as left grammar",
-         Cmd [":quit"]        ""        (const Quit)   "Exit",
-         Cmd [":help",":?"]   ""        (const Help)   "Show command list" ]
+    =  [ Cmd [":browse"]      ""               (const (const Browse)) "See the grammar names in scope",
+         Cmd [":rload"]       "<name> <file>"  (RCompile)             "Load a right grammar from file",
+         Cmd [":lload"]       "<name> <file>"  (LCompile)             "Load a left grammar from file",
+         Cmd [":rprint"]      "<gram>"         (const.RPrint)         "Print a grammar as right grammar",
+         Cmd [":lprint"]      "<gram>"         (const.LPrint)         "Print a grammar as left grammar",
+         Cmd [":quit"]        ""               (const (const Quit))   "Exit",
+         Cmd [":help",":?"]   ""               (const (const Help))   "Show command list" ]
   
   helpTxt :: [InteractiveCommand] -> String
   helpTxt cs
@@ -166,8 +172,8 @@ module Main where
                            return "")
       gram <- do if right then do rg <- parseIO f' (rgram_parse) x
                                   return (maybe Nothing (\x -> Just (Right x)) rg)
-                 else do lg <- parseIO f' (lgram_parse) x
-                         return (maybe Nothing (\x -> Just (Left x)) lg) 
+                          else do lg <- parseIO f' (lgram_parse) x
+                                  return (maybe Nothing (\x -> Just (Left x)) lg) 
       maybe (return state) (addGram state name) gram
 
 
