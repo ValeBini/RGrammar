@@ -187,8 +187,10 @@ lexer cont s = case s of
                     where lexNT cs = let (nt, rest) = span isAlphaNum cs 
                                         in cont (TNT nt) rest
                           lexT cs = let (t, rest) = span (/= '"') cs
-                                        in if t /= [] then cont (TT (filter (/= ' ') t)) (tail rest)
-                                                      else \line -> Failed $ "Line "++(show line)++": Empty terminal"
+                                        (s, rest') = span (== ' ') (tail rest)
+                                        in if (head rest') == '?' then cont (TT t) rest'
+                                           else if t /= [] then cont (TT (filter (/= ' ') t)) rest'
+                                                           else \line -> Failed $ "Line "++(show line)++": Empty terminal"
                           consumirBK anidado cl cont s = case s of
                                                               ('-':('-':cs)) -> consumirBK anidado cl cont $ dropWhile ((/=) '\n') cs
                                                               ('{':('-':cs)) -> consumirBK (anidado+1) cl cont cs
