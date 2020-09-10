@@ -336,9 +336,10 @@ reachedStates dfa@(DA xs st (F f) ac i) rs =
 -- y luego checkea que sean isomorfos viendo que las intersecciones
 -- del complemento del primero con el segundo y el primero con el 
 -- complemento del segundo acepten el lenguaje vacío. 
-dfaEq :: (Eq a, Eq b, Ord a, Ord b) => DFA a -> DFA b -> Bool
-dfaEq dfa0 dfa1 = let min0 = minimizeDFA dfa0
-                      min1 = minimizeDFA dfa1
+dfaEq :: GDFA -> GDFA -> Bool
+dfaEq dfa0 dfa1 = let (dfa0', dfa1') = unifyAlph dfa0 dfa1
+                      min0 = minimizeDFA dfa0'
+                      min1 = minimizeDFA dfa1'
                       l0 = dfaIntersection (dfaComplement min0) min1
                       l1 = dfaIntersection (dfaComplement min1) min0
                   in (emptyLanguage l0) && (emptyLanguage l1)
