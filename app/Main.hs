@@ -59,8 +59,7 @@ module Main where
                   "Enter :? to receive help.")
         rec state 
 
-  data Command = RCompile String String
-               | LCompile String String
+  data Command = Compile String String
                | RPrint String
                | LPrint String
                | Browse
@@ -115,16 +114,11 @@ module Main where
          Help       ->  putStr (helpTxt commands) >> return (Just state)
          Browse     ->  do  putStr (unlines [ s | s <- reverse (nub (map fst env)) ])
                             return (Just state)
-         RCompile n c  ->  let (vn,vf) = (validName n, validFilename c)
-                           in if vn && vf then do state' <- compileFile state c n True
-                                                  return (Just state')
-                                          else do putStrLn (if vn then "Invalid filename" else "Invalid name") 
-                                                  return (Just state)
-         LCompile n c  ->  let (vn,vf) = (validName n, validFilename c)
-                           in if vn && vf then do state' <- compileFile state c n False
-                                                  return (Just state')
-                                          else do putStrLn (if vn then "Invalid filename" else "Invalid name") 
-                                                  return (Just state)
+         Compile n c  ->  let (vn,vf) = (validName n, validFilename c)
+                          in if vn && vf then do state' <- compileFile state c n
+                                                 return (Just state')
+                                        else do putStrLn (if vn then "Invalid filename" else "Invalid name") 
+                                                return (Just state)
          RPrint s    ->  let g = lookforDFA s env
                          in case g of
                               Nothing -> putStr "Grammar not found\n" >> return (Just state)
@@ -142,8 +136,7 @@ module Main where
   commands :: [InteractiveCommand]
   commands
     =  [ Cmd [":browse"]      ""               (const (const Browse)) "See the grammar names in scope",
-         Cmd [":rload"]       "<name> <file>"  (RCompile)             "Load a right grammar from file",
-         Cmd [":lload"]       "<name> <file>"  (LCompile)             "Load a left grammar from file",
+         Cmd [":load"]        "<name> <file>"  (Compile)              "Load a grammar from file",
          Cmd [":rprint"]      "<gram>"         (const.RPrint)         "Print a grammar as right grammar",
          Cmd [":lprint"]      "<gram>"         (const.LPrint)         "Print a grammar as left grammar",
          Cmd [":quit"]        ""               (const (const Quit))   "Exit",
@@ -158,18 +151,16 @@ module Main where
                      in   ct ++ replicate ((24 - length ct) `max` 2) ' ' ++ d) cs) ++ "\n"
 
 
-  compileFile :: St -> String -> String -> Bool -> IO St
-  compileFile state@(S {..}) f name right = do
+  compileFile :: St -> String -> String -> IO St
+  compileFile state@(S {..}) f name = do
       putStrLn ("Opening "++f++"...")
       let f'= reverse(dropWhile isSpace (reverse f))
       x     <- catch (readFile f')
                  (\e -> do let err = show (e :: IOException)
                            hPutStr stderr ("Unable to open file " ++ f' ++ ": " ++ err ++"\n")
                            return "")
-      gram <- do if right then do rg <- parseIO f' (rgram_parse) x
-                                  return (maybe Nothing (\x -> Just (Right x)) rg)
-                          else do lg <- parseIO f' (lgram_parse) x
-                                  return (maybe Nothing (\x -> Just (Left x)) lg) 
+      gram <- do g <- parseIO f' (gram_parse) x
+                 return (maybe Nothing (\x -> Just x) g)
       maybe (return state) (addGram state name) gram
 
 

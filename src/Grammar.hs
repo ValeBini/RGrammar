@@ -11,7 +11,7 @@ import Data.List (union, (\\), delete, elemIndex, intersect)
 import qualified Data.List.NonEmpty as NE (fromList, toList)
 import Common
 import FA
-import Prelude hiding (LT)
+import Prelude hiding (LT, GT)
 
 
 
@@ -19,16 +19,19 @@ import Prelude hiding (LT)
 -------- FUNCIONES PARA CONVERTIR GramTerm A Gram --------
 ----------------------------------------------------------
 
--- Transforma un RGramTerm en una RGram
--- A partir del RGramTerm define cuáles son los conjuntos de No Terminales, Terminales, 
+-- Transforma un GGramTerm que sabemos que es una gramatica derecha en una RGram
+-- A partir del GGramTerm define cuáles son los conjuntos de No Terminales, Terminales, 
 -- Reglas de Producción y NT Inicial
-rgramTermToGram :: RGramTerm -> RGram
+rgramTermToGram :: GGramTerm -> RGram
+rgramTermToGram (GProd p ps) = let RG nts ts prods _ = rgramTermToGram ps
+                                   RG nts' ts' prods' _ = rgramTermToGram p
+                               in RG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
 rgramTermToGram (RProd p ps) = let RG nts ts prods _ = rgramTermToGram ps
                                    RG nts' ts' prods' _ = rgramTermToGram p
                                in RG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
-rgramTermToGram gt@(RRule l r) = let prods = rgramTermToProd gt
-                                     (ts, nts) = tntFromProd prods
-                                 in RG nts ts prods (NT "&")
+rgramTermToGram gt = let prods = rgramTermToProd gt
+                         (ts, nts) = tntFromProd prods
+                     in RG nts ts prods (NT "&")
     where tntFromProd [] = ([],[])
           tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
                                in case r of
@@ -36,30 +39,39 @@ rgramTermToGram gt@(RRule l r) = let prods = rgramTermToProd gt
                                     RPN nt0 t nt1 -> (union [t] t', union [nt0,nt1] nt')
                                     RPE nt -> (t', union [nt] nt')
 
--- Transforma un RGramTerm que corresponde a un conjunto de Reglas de Producción derechas
+-- Transforma un GGramTerm que corresponde a un conjunto de Reglas de Producción derechas
 -- de un mismo NT separadas por '|' y las transforma en una lista de RProd 
-rgramTermToProd :: RGramTerm -> [RProd]
-rgramTermToProd (RRule (RNT l) (ROr r rs)) = (convertR (NT l) r):(rgramTermToProd (RRule (RNT l) rs))
-rgramTermToProd (RRule RSigma (ROr r rs)) = (convertR (NT "&") r):(rgramTermToProd (RRule RSigma rs))
-rgramTermToProd (RRule (RNT l) r) =  [convertR (NT l) r]
-rgramTermToProd (RRule RSigma r) = [convertR (NT "&") r]
+rgramTermToProd :: GGramTerm -> [RProd]
+rgramTermToProd (RRule (GNT l) (ROr r rs)) = (convertR (NT l) r):(rgramTermToProd (RRule (GNT l) rs))
+rgramTermToProd (RRule (GNT l) (GOr r rs)) = (convertR (NT l) r):(rgramTermToProd (RRule (GNT l) rs))
+rgramTermToProd (GRule (GNT l) (GOr r rs)) = (convertR (NT l) r):(rgramTermToProd (GRule (GNT l) rs))
+rgramTermToProd (RRule GSigma (ROr r rs)) = (convertR (NT "&") r):(rgramTermToProd (RRule GSigma rs))
+rgramTermToProd (RRule GSigma (GOr r rs)) = (convertR (NT "&") r):(rgramTermToProd (RRule GSigma rs))
+rgramTermToProd (GRule GSigma (GOr r rs)) = (convertR (NT "&") r):(rgramTermToProd (GRule GSigma rs))
+rgramTermToProd (RRule (GNT l) r) =  [convertR (NT l) r]
+rgramTermToProd (GRule (GNT l) r) =  [convertR (NT l) r]
+rgramTermToProd (RRule GSigma r) = [convertR (NT "&") r]
+rgramTermToProd (GRule GSigma r) = [convertR (NT "&") r]
 
--- Toma un NT y un RGramTerm que corresponde a un lado derecho de una Regla de 
+-- Toma un NT y un GGramTerm que corresponde a un lado derecho de una Regla de 
 -- Producción derecha y devuelve la RProd correspondiente
-convertR :: NT -> RGramTerm -> RProd
-convertR nt REmpty = RPE nt 
-convertR nt (RT t) = RPT nt (T t)
+convertR :: NT -> GGramTerm -> RProd
+convertR nt GEmpty = RPE nt 
+convertR nt (GT t) = RPT nt (T t)
 convertR nt (RTNT t nt') = RPN nt (T t) (NT nt')
 convertR nt (RTSigma t) = RPN nt (T t) (NT "&")
 
 -- Idem rgramTermToGram para gramáticas izquierdas
-lgramTermToGram :: LGramTerm -> LGram
+lgramTermToGram :: GGramTerm -> LGram
 lgramTermToGram (LProd p ps) = let LG nts ts prods _ = lgramTermToGram ps
                                    LG nts' ts' prods' _ = lgramTermToGram p
                                in LG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
-lgramTermToGram gt@(LRule l r) = let prods = lgramTermToProd gt
-                                     (ts, nts) = tntFromProd prods
-                                 in LG nts ts prods (NT "&")
+lgramTermToGram (GProd p ps) = let LG nts ts prods _ = lgramTermToGram ps
+                                   LG nts' ts' prods' _ = lgramTermToGram p
+                               in LG (union nts' nts) (union ts' ts) (union prods' prods) (NT "&")
+lgramTermToGram gt = let prods = lgramTermToProd gt
+                         (ts, nts) = tntFromProd prods
+                     in LG nts ts prods (NT "&")                                
     where tntFromProd [] = ([],[])
           tntFromProd (r:rs) = let (t',nt') = tntFromProd rs 
                                in case r of
@@ -68,16 +80,22 @@ lgramTermToGram gt@(LRule l r) = let prods = lgramTermToProd gt
                                     LPE nt -> (t', union [nt] nt')
 
 -- Idem rgramTermToProd para Reglas de Producción izquierdas
-lgramTermToProd :: LGramTerm -> [LProd]
-lgramTermToProd (LRule (LNT l) (LOr r rs)) = (convertL (NT l) r):(lgramTermToProd (LRule (LNT l) rs))
-lgramTermToProd (LRule LSigma (LOr r rs)) = (convertL (NT "&") r):(lgramTermToProd (LRule LSigma rs))
-lgramTermToProd (LRule (LNT l) r) =  [convertL (NT l) r]
-lgramTermToProd (LRule LSigma r) = [convertL (NT "&") r]
+lgramTermToProd :: GGramTerm -> [LProd]
+lgramTermToProd (LRule (GNT l) (LOr r rs)) = (convertL (NT l) r):(lgramTermToProd (LRule (GNT l) rs))
+lgramTermToProd (LRule (GNT l) (GOr r rs)) = (convertL (NT l) r):(lgramTermToProd (LRule (GNT l) rs))
+lgramTermToProd (GRule (GNT l) (GOr r rs)) = (convertL (NT l) r):(lgramTermToProd (GRule (GNT l) rs))
+lgramTermToProd (LRule GSigma (LOr r rs)) = (convertL (NT "&") r):(lgramTermToProd (LRule GSigma rs))
+lgramTermToProd (LRule GSigma (GOr r rs)) = (convertL (NT "&") r):(lgramTermToProd (LRule GSigma rs))
+lgramTermToProd (GRule GSigma (GOr r rs)) = (convertL (NT "&") r):(lgramTermToProd (GRule GSigma rs))
+lgramTermToProd (LRule (GNT l) r) =  [convertL (NT l) r]
+lgramTermToProd (GRule (GNT l) r) =  [convertL (NT l) r]
+lgramTermToProd (LRule GSigma r) = [convertL (NT "&") r]
+lgramTermToProd (GRule GSigma r) = [convertL (NT "&") r]
 
 -- Idem convertR para Reglas de Producción izquierdas
-convertL :: NT -> LGramTerm -> LProd
-convertL nt LEmpty = LPE nt
-convertL nt (LT t) = LPT nt (T t)
+convertL :: NT -> GGramTerm -> LProd
+convertL nt GEmpty = LPE nt
+convertL nt (GT t) = LPT nt (T t)
 convertL nt (LNTT nt' t) = LPN nt (NT nt') (T t)
 convertL nt (LSigmaT t) = LPN nt (NT "&") (T t)
 
@@ -86,7 +104,6 @@ convertL nt (LSigmaT t) = LPN nt (NT "&") (T t)
 gramTermToGram :: GramTerm -> Gram 
 gramTermToGram (Left gram) = Left (lgramTermToGram gram)
 gramTermToGram (Right gram) = Right (rgramTermToGram gram)
-
 
 ----------------------------------------------------------
 ------- FUNCIONES PARA CONVERTIR Gramáticas A NFA --------

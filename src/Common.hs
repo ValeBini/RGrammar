@@ -2,29 +2,28 @@ module Common where
 
 import Data.List.NonEmpty (NonEmpty)
 
-data RGramTerm = RNT String
-               | RSigma
-               | RT String
+data GGramTerm = GNT String
+               | GSigma
+               | GT String
+               | GEmpty
                | RTNT String String
-               | RTSigma String 
-               | REmpty
-               | ROr RGramTerm RGramTerm
-               | RRule RGramTerm RGramTerm
-               | RProd RGramTerm RGramTerm
-    deriving (Eq, Show)
-
-data LGramTerm = LNT String
-               | LSigma
-               | LT String
+               | RTSigma String
                | LNTT String String
-               | LSigmaT String 
-               | LEmpty
-               | LOr LGramTerm LGramTerm
-               | LRule LGramTerm LGramTerm
-               | LProd LGramTerm LGramTerm
+               | LSigmaT String
+               | GOr GGramTerm GGramTerm
+               | ROr GGramTerm GGramTerm
+               | LOr GGramTerm GGramTerm
+               | GRule GGramTerm GGramTerm
+               | RRule GGramTerm GGramTerm
+               | LRule GGramTerm GGramTerm
+               | GProd GGramTerm GGramTerm
+               | RProd GGramTerm GGramTerm
+               | LProd GGramTerm GGramTerm
     deriving (Eq, Show)
 
-type GramTerm = Either LGramTerm RGramTerm
+-- usamos el mismo tipo pero segun si es Left o Right indicamos
+-- qué tipo de gramática es
+type GramTerm = Either GGramTerm GGramTerm
 
 -- terminal
 newtype T = T {runT :: String}

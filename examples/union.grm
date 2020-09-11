@@ -7,10 +7,10 @@ Esta gramática aceptará cadenas que alternen "a" y "b"
 y cuyos primer y último símbolos sean diferentes.
 -}
 
-& -> "a" A | "c" C | \;
+& -> "a" A | "b" C | \;
 A -> "b" B;
 B -> "a" A | \;
-C -> "d" D;
-D -> "c" C | \;
+C -> "a" D;
+D -> "b" C | \;
 
--- Sirve para probar: ab + ab' == union
+-- Sirve para probar: ab + ab~ == union

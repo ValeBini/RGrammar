@@ -2,12 +2,11 @@
 module Parse where
 import Common
 import Data.Char
-import Prelude hiding (LT)
+import Prelude hiding (LT, GT)
 }
 
 %monad { P } { thenP } { returnP }
-%name parse_lGram LGram
-%name parse_rGram RGram
+%name parse_Gram Gram
 %name parse_Stmt Stmt
 
 %tokentype { Token }
@@ -51,41 +50,57 @@ import Prelude hiding (LT)
 
 %%
 
-RLeftSide    :  NT                            { RNT $1 }
-             |  '&'                           { RSigma }
+LeftSide     :  NT                            { GNT $1 }
+             |  '&'                           { GSigma }
 
-LLeftSide    :  NT                            { LNT $1 }
-             |  '&'                           { LSigma }
- 
-RRight       :  T                             { RT $1 }
-             |  T NT                          { RTNT $1 $2 }
+GRight       : T                              { GT $1 }
+             | '\\'                           { GEmpty }
+
+RRight       :  T NT                          { RTNT $1 $2 }
              |  T '&'                         { RTSigma $1 }
-             |  '\\'                          { REmpty }
 
-LRight       :  T                             { LT $1 }
-             |  NT T                          { LNTT $1 $2 }
+LRight       :  NT T                          { LNTT $1 $2 }
              |  '&' T                         { LSigmaT $2 }
-             |  '\\'                          { LEmpty }
 
-RRightSide   : RRight '|' RRightSide          { ROr $1 $3 }
+GRightSide   : GRight '|' GRightSide          { GOr $1 $3 }
+             | GRight                         { $1 }
+
+RRightSide   : GRight '|' RRightSide          { ROr $1 $3 }
+             | RRight '|' GRightSide          { ROr $1 $3 }
+             | RRight '|' RRightSide          { ROr $1 $3 }
              | RRight                         { $1 }
 
-LRightSide   : LRight '|' LRightSide          { LOr $1 $3 }
+LRightSide   : GRight '|' LRightSide          { LOr $1 $3 }
+             | LRight '|' GRightSide          { LOr $1 $3 }
+             | LRight '|' LRightSide          { LOr $1 $3 }
              | LRight                         { $1 }
 
-RRule        : RLeftSide '->' RRightSide      { RRule $1 $3 }
+GRule        : LeftSide '->' GRightSide      { GRule $1 $3 }
 
-LRule        : LLeftSide '->' LRightSide      { LRule $1 $3 }
+RRule        : LeftSide '->' RRightSide      { RRule $1 $3 }
 
-RProd        : RRule ';' RProd                { RProd $1 $3 }
+LRule        : LeftSide '->' LRightSide      { LRule $1 $3 }
+
+GProd        : GRule ';' GProd                { GProd $1 $3 }
+             | GRule ';'                      { $1 }
+
+RProd        : GRule ';' RProd                { RProd $1 $3 }
+             | RRule ';' GProd                { RProd $1 $3 }
+             | RRule ';' RProd                { RProd $1 $3 }
              | RRule ';'                      { $1 }
 
-LProd        : LRule ';' LProd                { LProd $1 $3 }
+LProd        : GRule ';' LProd                { LProd $1 $3 }
+             | LRule ';' GProd                { LProd $1 $3 }
+             | LRule ';' LProd                { LProd $1 $3 }
              | LRule ';'                      { $1 }
 
 RGram        :  RProd                         { $1 }
+             |  GProd                         { $1 }
 
 LGram        :  LProd                         { $1 }
+
+Gram         :  RGram                         { Right $1 }
+             |  LGram                         { Left $1 }
 
 Grammar     : NT                              { SGram $1 }
             | Grammar '+' Grammar             { SUnion $1 $3 }
@@ -200,7 +215,6 @@ lexer cont s = case s of
                                                               ('\n':cs) -> consumirBK anidado (cl+1) cont cs
                                                               (_:cs) -> consumirBK anidado cl cont cs
 
-lgram_parse s = parse_lGram s 1
-rgram_parse s = parse_rGram s 1
+gram_parse s = parse_Gram s 1
 stmt_parse s = parse_Stmt s 1
 }
